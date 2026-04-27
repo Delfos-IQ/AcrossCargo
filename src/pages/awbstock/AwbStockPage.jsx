@@ -14,6 +14,25 @@ import Layout from '../../components/Layout.jsx';
 /* ──── TABS ──────────────────────────────────────── */
 const TABS = { MASTERS: 'masters', ALLOCATIONS: 'allocations' };
 
+/* ──── STOCK STATUS HELPER ───────────────────────── */
+function getStockStatus(total, used) {
+  const avail = total - used;
+  const pct   = total > 0 ? avail / total : 0;
+  if (avail <= 0)   return { level: 'exhausted', label: 'Exhausted', bg: '#fee2e2', color: '#991b1b' };
+  if (pct < 0.10)   return { level: 'critical',  label: 'Critical',  bg: '#fee2e2', color: '#991b1b' };
+  if (pct < 0.25)   return { level: 'low',       label: 'Low',       bg: '#fef3c7', color: '#92400e' };
+  return               { level: 'ok',        label: 'OK',        bg: '#dcfce7', color: '#166534' };
+}
+
+function StockBadge({ total, used }) {
+  const s = getStockStatus(total, used);
+  return (
+    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 9999, fontSize: '0.7rem', fontWeight: 700, background: s.bg, color: s.color }}>
+      {s.label}
+    </span>
+  );
+}
+
 /* ──── MASTERS SECTION ───────────────────────────── */
 function MastersSection({ masters, allocations }) {
   const [showForm, setShowForm] = useState(false);
@@ -343,6 +362,7 @@ function AllocationsSection({ masters, allocations, agents }) {
                   <th>Total</th>
                   <th>Used</th>
                   <th>Available</th>
+                  <th>Status</th>
                   <th>Date</th>
                   <th style={{ width: 120 }}>Actions</th>
                 </tr>
@@ -364,6 +384,7 @@ function AllocationsSection({ masters, allocations, agents }) {
                           {total - used}
                         </span>
                       </td>
+                      <td><StockBadge total={total} used={used} /></td>
                       <td>{item.dateAllocated || '—'}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
@@ -455,6 +476,24 @@ export default function AwbStockPage() {
   const { data: agents } = useFirestoreCollection('agentProfiles');
   const [tab, setTab] = useState(TABS.MASTERS);
 
+  // Compute alerts from allocations
+  const alerts = useMemo(() => {
+    return (allocations || [])
+      .map(a => {
+        const total = calculateAwbCount(a.startNumber, a.endNumber);
+        const used  = (a.usedAwbs || []).length;
+        const s     = getStockStatus(total, used);
+        if (s.level === 'ok') return null;
+        const agent = (agents || []).find(ag => ag.id === a.agentProfileId);
+        return { ...s, agentName: agent?.agentName || '—', prefix: a.prefix, avail: total - used, total };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const order = { exhausted: 0, critical: 1, low: 2 };
+        return order[a.level] - order[b.level];
+      });
+  }, [allocations, agents]);
+
   return (
     <Layout>
       <div className="page-wrapper">
@@ -464,6 +503,22 @@ export default function AwbStockPage() {
             Manage master stock and agent allocations
           </p>
         </div>
+
+        {/* Alert banner */}
+        {alerts.length > 0 && (
+          <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-5)', display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: '#92400e', whiteSpace: 'nowrap' }}>
+              ⚠️ Stock alerts ({alerts.length})
+            </span>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              {alerts.map((a, i) => (
+                <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: '0.75rem', background: a.bg, color: a.color, borderRadius: 9999, padding: '2px 10px', fontWeight: 600 }}>
+                  {a.agentName} · {a.prefix} · {a.avail}/{a.total} AWBs
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--color-border)', marginBottom: 'var(--space-6)' }}>

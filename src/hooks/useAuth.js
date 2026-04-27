@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase.js';
 
 /**
- * Hook que gestiona el estado de autenticación del usuario.
- * Devuelve: currentUser, currentUserProfile, isLoading, login, logout
+ * Manages authentication state.
+ * userProfiles documents are stored with the Firebase UID as the document ID,
+ * which allows Firestore Security Rules to do efficient single-document lookups.
+ *
+ * Returns: currentUser, currentUserProfile, isLoading, login, logout
  */
 export const useAuth = () => {
   const [currentUser,        setCurrentUser]        = useState(null);
@@ -15,12 +18,15 @@ export const useAuth = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const q = query(collection(db, 'userProfiles'), where('email', '==', user.email));
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const doc = snapshot.docs[0];
-          setCurrentUserProfile({ id: doc.id, ...doc.data() });
-        } else {
+        try {
+          const snap = await getDoc(doc(db, 'userProfiles', user.uid));
+          if (snap.exists()) {
+            setCurrentUserProfile({ id: snap.id, ...snap.data() });
+          } else {
+            // Profile not found — grant minimal access so the user can at least log in
+            setCurrentUserProfile({ email: user.email, role: 'user' });
+          }
+        } catch {
           setCurrentUserProfile({ email: user.email, role: 'user' });
         }
         setCurrentUser(user);

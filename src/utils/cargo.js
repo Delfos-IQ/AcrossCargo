@@ -54,8 +54,8 @@ export const getRateForBooking = (origin, destination, currency, chargeableWeigh
 export const validateBookingData = (data) => {
   const required = [
     'awbInputPrefix', 'awbInputNumber', 'origin', 'destination',
-    'pieces', 'weightKg', 'natureOfGoods', 'selectedShcCode',
-    'selectedAgentProfileId', 'currency', 'paymentType', 'bookingStatus',
+    'pieces', 'weightKg', 'natureOfGoods',
+    'currency', 'paymentType', 'bookingStatus',
   ];
   for (const field of required) {
     if (!data[field] || String(data[field]).trim() === '') {

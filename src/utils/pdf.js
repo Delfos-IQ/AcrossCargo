@@ -14,7 +14,7 @@ const formatDateStr = (val) => {
   try {
     const d = val?.toDate ? val.toDate() : new Date(val);
     if (isNaN(d)) return 'N/A';
-    return d.toLocaleDateString('es-ES');
+    return d.toLocaleDateString('en-GB');
   } catch { return 'N/A'; }
 };
 
@@ -85,22 +85,22 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
   pdoc.setTextColor(107, 114, 128);
   const airline = airlinePrefixData.find(ap => ap.prefix === booking.awbInputPrefix);
   pdoc.text(`AWB: ${booking.awb || 'N/A'}`, LEFT, y);
-  pdoc.text(`Fecha: ${formatDateStr(booking.createdAt)}`, RIGHT, y, { align: 'right' });
+  pdoc.text(`Date: ${formatDateStr(booking.createdAt)}`, RIGHT, y, { align: 'right' });
   y += 5;
-  pdoc.text(`Aerolínea: ${airline ? `${airline.prefix} – ${airline.name}` : booking.awbInputPrefix || 'N/A'}`, LEFT, y);
+  pdoc.text(`Airline: ${airline ? `${airline.prefix} – ${airline.name}` : booking.awbInputPrefix || 'N/A'}`, LEFT, y);
   y += 8;
   pdoc.setTextColor(17, 24, 39);
 
-  drawSection('Detalles del Envío', [
-    { label: 'Origen', value: getAirport(booking.origin) },
-    { label: 'Destino', value: getAirport(booking.destination) },
-    { label: 'Bultos', value: booking.pieces },
-    { label: 'Peso real', value: `${booking.weightKg} kg` },
-    { label: 'Peso imputable', value: `${booking.chargeableWeightKg || '—'} kg` },
-    { label: 'Volumen', value: `${booking.volumeM3 || '—'} m³` },
-    { label: 'Mercancía', value: booking.natureOfGoods },
+  drawSection('Shipment Details', [
+    { label: 'Origin', value: getAirport(booking.origin) },
+    { label: 'Destination', value: getAirport(booking.destination) },
+    { label: 'Pieces', value: booking.pieces },
+    { label: 'Gross Weight', value: `${booking.weightKg} kg` },
+    { label: 'Chargeable Weight', value: `${booking.chargeableWeightKg || '—'} kg` },
+    { label: 'Volume', value: `${booking.volumeM3 || '—'} m³` },
+    { label: 'Commodity', value: booking.natureOfGoods },
     { label: 'SHC', value: booking.selectedShcCode },
-    { label: 'Estado', value: booking.bookingStatus },
+    { label: 'Status', value: booking.bookingStatus },
   ]);
 
   // Flight segments table
@@ -110,12 +110,12 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
     pdoc.setFont('helvetica', 'bold');
     pdoc.setFillColor(243, 244, 246);
     pdoc.rect(LEFT, y - 4, RIGHT - LEFT, 6, 'F');
-    pdoc.text('ITINERARIO DE VUELO', LEFT + 2, y);
+    pdoc.text('FLIGHT ITINERARY', LEFT + 2, y);
     y += 3;
 
     pdoc.autoTable({
       startY: y,
-      head: [['Vuelo', 'Fecha', 'Origen', 'Destino', 'STD', 'STA', 'Estado']],
+      head: [['Flight', 'Date', 'Origin', 'Destination', 'STD', 'STA', 'Status']],
       body: booking.flightSegments.map(seg => {
         const fs = flightSchedules.find(s => s.flightNumber?.toUpperCase() === seg.flightNumber?.toUpperCase());
         return [seg.flightNumber || 'NIL', formatDDMMM(seg.departureDate), seg.segmentOrigin || '—', seg.segmentDestination || '—', fs?.std || '—', fs?.sta || '—', booking.bookingStatus || '—'];
@@ -130,38 +130,38 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
 
   // Dimensions
   if (booking.dimensionLines?.length) {
-    drawSection('Dimensiones', booking.dimensionLines.map((d, i) => ({
-      label: `Línea ${i + 1}`,
-      value: `${d.pieces} bultos — ${d.length}×${d.width}×${d.height} cm`,
+    drawSection('Dimensions', booking.dimensionLines.map((d, i) => ({
+      label: `Line ${i + 1}`,
+      value: `${d.pieces} pcs — ${d.length}×${d.width}×${d.height} cm`,
     })));
   }
 
   drawSection('Shipper', [
-    { label: 'Nombre', value: booking.shipperName },
-    { label: 'Dirección', value: booking.shipperStreet },
-    { label: 'Ciudad/País', value: `${booking.shipperCity || ''}, ${booking.shipperCountry || ''}` },
-    { label: 'Contacto', value: booking.shipperContact },
+    { label: 'Name', value: booking.shipperName },
+    { label: 'Address', value: booking.shipperStreet },
+    { label: 'City/Country', value: `${booking.shipperCity || ''}, ${booking.shipperCountry || ''}` },
+    { label: 'Contact', value: booking.shipperContact },
   ]);
 
   drawSection('Consignee', [
-    { label: 'Nombre', value: booking.consigneeName },
-    { label: 'Dirección', value: booking.consigneeStreet },
-    { label: 'Ciudad/País', value: `${booking.consigneeCity || ''}, ${booking.consigneeCountry || ''}` },
-    { label: 'Contacto', value: booking.consigneeContact },
+    { label: 'Name', value: booking.consigneeName },
+    { label: 'Address', value: booking.consigneeStreet },
+    { label: 'City/Country', value: `${booking.consigneeCity || ''}, ${booking.consigneeCountry || ''}` },
+    { label: 'Contact', value: booking.consigneeContact },
   ]);
 
-  drawSection('Agente', [
-    { label: 'Nombre', value: booking.agent_details_name },
+  drawSection('Agent', [
+    { label: 'Name', value: booking.agent_details_name },
     { label: 'IATA/CASS', value: booking.agentIataCassNumber || booking.agent_id },
-    { label: 'Referencia', value: booking.ffrReference },
+    { label: 'Reference', value: booking.ffrReference },
   ]);
 
-  drawSection('Cargos', [
-    { label: 'Moneda', value: booking.currency },
-    { label: 'Tarifa/kg', value: String(booking.ratePerKg) },
-    { label: 'Flete', value: String(booking.freightCharges) },
+  drawSection('Charges', [
+    { label: 'Currency', value: booking.currency },
+    { label: 'Rate/kg', value: String(booking.ratePerKg) },
+    { label: 'Freight', value: String(booking.freightCharges) },
     { label: 'Total', value: String(booking.totalCalculatedCharges) },
-    { label: 'Tipo pago', value: booking.paymentType },
+    { label: 'Payment Type', value: booking.paymentType },
   ]);
 
   // Other charges table
@@ -169,7 +169,7 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
     checkPage();
     pdoc.autoTable({
       startY: y,
-      head: [['Código', 'Descripción', 'Importe']],
+      head: [['Code', 'Description', 'Amount']],
       body: booking.otherCharges.map(oc => [oc.chargeCode, oc.chargeDescription, parseFloat(oc.chargeAmount).toFixed(2)]),
       theme: 'grid',
       headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontSize: 8 },
@@ -215,7 +215,7 @@ export const generateCargoSalesReportPdf = (reportBookings, dateFrom, dateTo, ag
   pdoc.text(`Carrier: ${carrierText}`, 20, 30);
   pdoc.text(`Station: ${station}`, 20, 35);
   pdoc.text(`Period: ${formatDateStr(dateFrom)} – ${formatDateStr(dateTo)}`, pageW - 20, 30, { align: 'right' });
-  pdoc.text(`Generated: ${new Date().toLocaleDateString('es-ES')}`, pageW - 20, 35, { align: 'right' });
+  pdoc.text(`Generated: ${new Date().toLocaleDateString('en-GB')}`, pageW - 20, 35, { align: 'right' });
 
   const tableBody = reportBookings.map(b => {
     const agent = agentProfiles.find(a => a.id === b.selectedAgentProfileId);
@@ -267,7 +267,7 @@ export const generateCargoSalesReportPdf = (reportBookings, dateFrom, dateTo, ag
       pdoc.setFontSize(8);
       pdoc.setTextColor(180, 180, 180);
       pdoc.text('AcrossAviation', data.settings.margin.left, pdoc.internal.pageSize.height - 8);
-      pdoc.text(`Pág. ${data.pageNumber}`, pageW - data.settings.margin.right, pdoc.internal.pageSize.height - 8, { align: 'right' });
+      pdoc.text(`Page ${data.pageNumber}`, pageW - data.settings.margin.right, pdoc.internal.pageSize.height - 8, { align: 'right' });
     },
   });
 
@@ -305,7 +305,7 @@ export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo) => {
   pdoc.setFont('helvetica', 'bold');
   pdoc.setTextColor(17, 24, 39);
   pdoc.text('Bill To:', 20, y);
-  pdoc.text('Detalles:', pageW / 2 + 20, y);
+  pdoc.text('Details:', pageW / 2 + 20, y);
   y += 6;
 
   pdoc.setFontSize(9);
@@ -321,9 +321,9 @@ export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo) => {
   const invNum = `INV-${agent.agentId || 'X'}-${Date.now()}`;
   const detailsStartY = y;
   [
-    ['Factura #:', invNum],
-    ['Fecha:', new Date().toLocaleDateString('es-ES')],
-    ['Período:', `${formatDateStr(dateFrom)} – ${formatDateStr(dateTo)}`],
+    ['Invoice #:', invNum],
+    ['Date:', new Date().toLocaleDateString('en-GB')],
+    ['Period:', `${formatDateStr(dateFrom)} – ${formatDateStr(dateTo)}`],
   ].forEach(([label, val]) => {
     pdoc.setFont('helvetica', 'bold');
     pdoc.text(label, pageW / 2 + 20, y);
@@ -349,7 +349,7 @@ export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo) => {
 
   pdoc.autoTable({
     startY: y,
-    head: [['AWB', 'Fecha', 'Ruta', 'Chg.Wt', 'Flete', 'Otros', 'Total']],
+    head: [['AWB', 'Date', 'Route', 'Chg.Wt', 'Freight', 'Other', 'Total']],
     body: tableBody,
     foot: [[
       { content: '', colSpan: 4, styles: { fillColor: [229, 231, 235] } },
@@ -373,7 +373,7 @@ export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo) => {
   pdoc.setFontSize(9);
   pdoc.setFont('helvetica', 'normal');
   pdoc.setTextColor(107, 114, 128);
-  pdoc.text('Pago en 30 días. Gracias por su negocio.', 20, y);
+  pdoc.text('Payment due within 30 days. Thank you for your business.', 20, y);
 
   pdoc.save(`Invoice_${(agent.agentName || 'Agent').replace(/\s+/g,'_')}_${dateFrom}_${dateTo}.pdf`);
 };

@@ -311,7 +311,7 @@ const getQrDataUrl = (text) => {
 /* ──────────────────────────────────────────────────────────────
    INVOICE PDF  (portrait A4)
 ─────────────────────────────────────────────────────────────── */
-export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo) => {
+export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo, { ivaRate = 0, bankDetails = {} } = {}) => {
   if (!agent || !bookings?.length) return;
   const { jsPDF } = window.jspdf;
   const pdoc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
@@ -398,17 +398,67 @@ export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo) => {
     columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } },
   });
 
-  y = pdoc.lastAutoTable.finalY + 12;
+  y = pdoc.lastAutoTable.finalY + 10;
+  const currency = bookings[0]?.currency || 'EUR';
+  const ivaAmount  = grandTotal * (ivaRate / 100);
+  const totalWithIva = grandTotal + ivaAmount;
+
+  // Totals block (right-aligned)
+  pdoc.setFontSize(9);
+  pdoc.setFont('helvetica', 'normal');
+  pdoc.setTextColor(107, 114, 128);
+  pdoc.text('Subtotal:', pageW - 70, y);
+  pdoc.text(`${currency} ${formatNumberWithSeparators(grandTotal, 2)}`, pageW - 20, y, { align: 'right' });
+  y += 6;
+
+  if (ivaRate > 0) {
+    pdoc.text(`IVA ${ivaRate}%:`, pageW - 70, y);
+    pdoc.text(`${currency} ${formatNumberWithSeparators(ivaAmount, 2)}`, pageW - 20, y, { align: 'right' });
+    y += 6;
+    // Divider line
+    pdoc.setDrawColor(209, 213, 219);
+    pdoc.line(pageW - 80, y - 1, pageW - 20, y - 1);
+    y += 3;
+  }
+
   pdoc.setFontSize(13);
   pdoc.setFont('helvetica', 'bold');
   pdoc.setTextColor(17, 24, 39);
-  pdoc.text(`TOTAL: ${bookings[0]?.currency || 'EUR'} ${formatNumberWithSeparators(grandTotal, 2)}`, pageW - 20, y, { align: 'right' });
-  y += 12;
+  pdoc.text(`TOTAL: ${currency} ${formatNumberWithSeparators(totalWithIva, 2)}`, pageW - 20, y, { align: 'right' });
+  y += 14;
+
   pdoc.setFontSize(9);
   pdoc.setFont('helvetica', 'normal');
   pdoc.setTextColor(107, 114, 128);
   pdoc.text('Payment due within 30 days. Thank you for your business.', 20, y);
-  y += 14;
+  y += 10;
+
+  // Bank transfer details
+  const { holder, bank, iban, bic } = bankDetails || {};
+  if (iban || bank) {
+    pdoc.setDrawColor(209, 213, 219);
+    pdoc.line(20, y, pageW - 20, y);
+    y += 6;
+    pdoc.setFontSize(9);
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setTextColor(17, 24, 39);
+    pdoc.text('Bank Transfer Details', 20, y);
+    y += 5;
+    pdoc.setFont('helvetica', 'normal');
+    pdoc.setTextColor(55, 65, 81);
+    const bankLines = [
+      holder && `Account holder: ${holder}`,
+      bank   && `Bank: ${bank}`,
+      iban   && `IBAN: ${iban}`,
+      bic    && `BIC/SWIFT: ${bic}`,
+    ].filter(Boolean);
+    bankLines.forEach(line => {
+      pdoc.text(line, 20, y);
+      y += 5;
+    });
+    y += 4;
+  }
+  y += 4;
 
   // ── Verifactu QR (Real Decreto 1007/2023) ──────────────────
   const COMPANY_NIF  = 'B93644862';                       // CIF without hyphen

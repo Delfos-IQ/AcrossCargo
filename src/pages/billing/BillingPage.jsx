@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { db } from '../../services/firebase.js';
+import { doc, setDoc } from 'firebase/firestore';
 import { useAppContext } from '../../context/AppContext.jsx';
 import { buildUTCDateRange, formatDate } from '../../utils/dates.js';
 import { generateInvoicePdf } from '../../utils/pdf.js';
@@ -7,12 +9,41 @@ import Footer from '../../components/Footer.jsx';
 import toast from 'react-hot-toast';
 
 export default function BillingPage() {
-  const { bookings, agentProfiles, isAdmin, myAgentId } = useAppContext();
+  const { bookings, agentProfiles, isAdmin, myAgentId, globalSettings } = useAppContext();
   const [selectedAgentId,    setSelectedAgentId]    = useState('');
   const [dateFrom,           setDateFrom]           = useState('');
   const [dateTo,             setDateTo]             = useState('');
   const [bookingsForInvoice, setBookingsForInvoice] = useState([]);
   const [filtered,           setFiltered]           = useState(false);
+  const [ivaRate,            setIvaRate]            = useState(21);
+  const [bankHolder,         setBankHolder]         = useState('');
+  const [bankName,           setBankName]           = useState('');
+  const [bankIban,           setBankIban]           = useState('');
+  const [bankBic,            setBankBic]            = useState('');
+  const [savingBank,         setSavingBank]         = useState(false);
+
+  // Pre-fill bank fields from saved settings
+  useEffect(() => {
+    if (!globalSettings) return;
+    if (globalSettings.bankHolder) setBankHolder(globalSettings.bankHolder);
+    if (globalSettings.bankName)   setBankName(globalSettings.bankName);
+    if (globalSettings.bankIban)   setBankIban(globalSettings.bankIban);
+    if (globalSettings.bankBic)    setBankBic(globalSettings.bankBic);
+  }, [globalSettings]);
+
+  const handleSaveBank = async () => {
+    setSavingBank(true);
+    try {
+      await setDoc(doc(db, 'appSettings', 'global'), {
+        bankHolder, bankName, bankIban, bankBic,
+      }, { merge: true });
+      toast.success('Bank details saved for future use');
+    } catch (err) {
+      toast.error('Error saving: ' + err.message);
+    } finally {
+      setSavingBank(false);
+    }
+  };
 
   // Agents only see their own bookings; pre-select the agent dropdown for them
   const scopedBookings = useMemo(() => {
@@ -117,6 +148,52 @@ export default function BillingPage() {
                 Filter
               </button>
             </div>
+
+            {/* IVA + Bank details */}
+            <div style={{ borderTop: '1px solid var(--color-border)', marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+                <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-gray-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Invoice options
+                </div>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  style={{ fontSize: '0.75rem', padding: '4px 12px' }}
+                  onClick={handleSaveBank}
+                  disabled={savingBank}
+                  title="Save bank details so they appear automatically next time"
+                >
+                  {savingBank ? 'Saving…' : '💾 Save bank details'}
+                </button>
+              </div>
+              <div className="form-grid form-grid-3" style={{ gap: 'var(--space-3)' }}>
+                <div className="form-group">
+                  <label className="form-label">IVA rate</label>
+                  <select className="form-select" value={ivaRate} onChange={e => setIvaRate(Number(e.target.value))}>
+                    <option value={0}>0% — Exento / Intracomunitario</option>
+                    <option value={4}>4% — Superreducido</option>
+                    <option value={10}>10% — Reducido</option>
+                    <option value={21}>21% — General</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Account holder</label>
+                  <input className="form-input" value={bankHolder} onChange={e => setBankHolder(e.target.value)} placeholder="Across Aviation SLU" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Bank name</label>
+                  <input className="form-input" value={bankName} onChange={e => setBankName(e.target.value)} placeholder="e.g. Banco Santander" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">IBAN</label>
+                  <input className="form-input" value={bankIban} onChange={e => setBankIban(e.target.value.toUpperCase())} placeholder="ES00 0000 0000 0000 0000 0000" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">BIC / SWIFT</label>
+                  <input className="form-input" value={bankBic} onChange={e => setBankBic(e.target.value.toUpperCase())} placeholder="e.g. BSCHESMMXXX" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -162,7 +239,10 @@ export default function BillingPage() {
                       </div>
                       <button
                         className="button button-primary"
-                        onClick={() => generateInvoicePdf(selectedAgent, bookingsForInvoice, dateFrom, dateTo)}
+                        onClick={() => generateInvoicePdf(selectedAgent, bookingsForInvoice, dateFrom, dateTo, {
+                          ivaRate,
+                          bankDetails: { holder: bankHolder, bank: bankName, iban: bankIban, bic: bankBic },
+                        })}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ width: 15, height: 15 }}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -202,9 +282,19 @@ export default function BillingPage() {
                   </tbody>
                   <tfoot>
                     <tr>
+                      <td colSpan={4} className="text-right" style={{ color: 'var(--color-gray-500)' }}>Subtotal</td>
+                      <td className="text-right">{total.toFixed(2)}</td>
+                    </tr>
+                    {ivaRate > 0 && (
+                      <tr>
+                        <td colSpan={4} className="text-right" style={{ color: 'var(--color-gray-500)' }}>IVA {ivaRate}%</td>
+                        <td className="text-right">{(total * ivaRate / 100).toFixed(2)}</td>
+                      </tr>
+                    )}
+                    <tr style={{ fontWeight: 700 }}>
                       <td colSpan={4} className="text-right">TOTAL</td>
                       <td className="text-right" style={{ fontSize: 'var(--font-size-base)' }}>
-                        {total.toFixed(2)}
+                        {(total * (1 + ivaRate / 100)).toFixed(2)}
                       </td>
                     </tr>
                   </tfoot>

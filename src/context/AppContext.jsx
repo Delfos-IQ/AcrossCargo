@@ -39,6 +39,10 @@ export const AppProvider = ({ children }) => {
     return {
       casSplitPct:    doc.casSplitPct    ?? 70,
       acrossSplitPct: doc.acrossSplitPct ?? 30,
+      bankHolder:     doc.bankHolder     ?? '',
+      bankName:       doc.bankName       ?? '',
+      bankIban:       doc.bankIban       ?? '',
+      bankBic:        doc.bankBic        ?? '',
     };
   }, [appSettings]);
 

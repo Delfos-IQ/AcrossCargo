@@ -29,7 +29,7 @@ const formatDDMMM = (dateStr) => {
 /* ──────────────────────────────────────────────────────────────
    BOOKING CONFIRMATION PDF
 ─────────────────────────────────────────────────────────────── */
-export const generateBookingConfirmationPdf = (booking, flightSchedules = [], iataAirportCodes = [], { preview = false } = {}) => {
+export const generateBookingConfirmationPdf = (booking, flightSchedules = [], iataAirportCodes = [], { preview = false, returnBase64 = false } = {}) => {
   const { jsPDF } = window.jspdf;
   const pdoc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
 
@@ -179,7 +179,10 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
     y = pdoc.lastAutoTable.finalY + sectionGap;
   }
 
-  if (preview) {
+  if (returnBase64) {
+    // Returns pure base64 string (no data URI prefix) for email attachment
+    return pdoc.output('datauristring').split(',')[1];
+  } else if (preview) {
     const url = pdoc.output('bloburl');
     window.open(url, '_blank');
   } else {

@@ -220,8 +220,9 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFfrModal,   setShowFfrModal]   = useState(false);
   const [ffrCopied,      setFfrCopied]      = useState(false);
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [emailForm,      setEmailForm]      = useState({ to: '', cc: '', subject: '', body: '' });
+  const [showEmailModal,  setShowEmailModal]  = useState(false);
+  const [emailForm,       setEmailForm]       = useState({ to: '', cc: '', subject: '', body: '' });
+  const [isSendingEmail,  setIsSendingEmail]  = useState(false);
 
   /* ── Derived display values ── */
   const [displayChargeableWeightKg, setDisplayChargeableWeightKg] = useState('0.0');
@@ -420,22 +421,43 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
     setShowEmailModal(true);
   };
 
-  const handleSendEmail = () => {
-    // 1. Download the PDF so the user can attach it
-    if (window.jspdf) {
-      generateBookingConfirmationPdf(formAsBooking(), flightSchedules || [], iataAirportCodes || []);
+  const handleSendEmail = async () => {
+    if (!emailForm.to) return;
+    setIsSendingEmail(true);
+    try {
+      // Generate PDF as base64 for attachment
+      let pdfBase64 = null;
+      let pdfFilename = null;
+      if (window.jspdf) {
+        const bk = formAsBooking();
+        pdfBase64  = generateBookingConfirmationPdf(bk, flightSchedules || [], iataAirportCodes || [], { returnBase64: true });
+        pdfFilename = `BookingConfirmation_${(bk.awb || 'AWB').replace('-', '')}.pdf`;
+      }
+
+      const res = await fetch('https://acrosscargo.pedicode-app.workers.dev', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to:          emailForm.to,
+          cc:          emailForm.cc || undefined,
+          subject:     emailForm.subject,
+          body:        emailForm.body,
+          pdfBase64,
+          pdfFilename,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error?.message || JSON.stringify(result.error) || 'Email failed');
+
+      toast.success('Email sent — PDF attached automatically!');
+      setShowEmailModal(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Error sending email: ' + err.message);
+    } finally {
+      setIsSendingEmail(false);
     }
-    // 2. Open mailto in email client
-    // NOTE: URLSearchParams encodes spaces as '+' (form-urlencoded), but mailto: requires '%20'
-    const encode = (str) => encodeURIComponent(str).replace(/\+/g, '%20');
-    const parts = [];
-    if (emailForm.cc)      parts.push(`cc=${encode(emailForm.cc)}`);
-    if (emailForm.subject) parts.push(`subject=${encode(emailForm.subject)}`);
-    if (emailForm.body)    parts.push(`body=${encode(emailForm.body)}`);
-    const mailto = `mailto:${emailForm.to}${parts.length ? '?' + parts.join('&') : ''}`;
-    window.location.href = mailto;
-    toast.success('PDF downloaded — attach it to the email that just opened.');
-    setShowEmailModal(false);
   };
 
   /* ── Auto-select agent for agent-role users (create mode only) ── */
@@ -1455,7 +1477,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
               <div>
                 <div style={{ fontWeight: 700, fontSize: '1rem' }}>✉ Send Booking PDF by Email</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', marginTop: 2 }}>
-                  Opens your email client — PDF will be downloaded for you to attach
+                  The PDF will be attached automatically and sent directly
                 </div>
               </div>
               <button type="button" className="button button-ghost button-sm"
@@ -1487,7 +1509,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
                   onChange={e => setEmailForm(f => ({ ...f, body: e.target.value }))} />
               </div>
               <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', margin: 0 }}>
-                The PDF will be downloaded automatically. Attach it to the email that opens in your email client.
+                The PDF is generated and attached automatically — no manual steps needed.
               </p>
             </div>
 
@@ -1498,11 +1520,16 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
               borderTop: '1px solid var(--color-border)',
             }}>
               <button type="button" className="button button-ghost"
-                onClick={() => setShowEmailModal(false)}>Cancel</button>
+                onClick={() => setShowEmailModal(false)} disabled={isSendingEmail}>Cancel</button>
               <button type="button" className="button button-primary"
-                disabled={!emailForm.to}
+                disabled={!emailForm.to || isSendingEmail}
                 onClick={handleSendEmail}>
-                ✉ Send Email
+                {isSendingEmail ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                    Sending…
+                  </span>
+                ) : '✉ Send Email'}
               </button>
             </div>
           </div>

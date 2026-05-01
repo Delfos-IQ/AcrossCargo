@@ -30,6 +30,20 @@ const PrivateRoute = ({ children }) => {
   return currentUser ? children : <Navigate to="/login" replace />;
 };
 
+// Rutas exclusivas para administradores
+const AdminRoute = ({ children }) => {
+  const { currentUser, isLoading, isAdmin } = useAppContext();
+  if (isLoading) return (
+    <div className="loading-screen">
+      <div className="spinner" />
+      <p style={{ color: 'var(--color-gray-500)', fontSize: 'var(--font-size-sm)' }}>Cargando sistema…</p>
+    </div>
+  );
+  if (!currentUser) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  return children;
+};
+
 export default function App() {
   const { currentUser } = useAppContext();
 
@@ -41,7 +55,7 @@ export default function App() {
       <Route path="/dashboard"  element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
       <Route path="/bookings"   element={<PrivateRoute><BookingsPage /></PrivateRoute>} />
       <Route path="/reports"    element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
-      <Route path="/billing"    element={<PrivateRoute><BillingPage /></PrivateRoute>} />
+      <Route path="/billing"    element={<AdminRoute><BillingPage /></AdminRoute>} />
 
       {/* Management */}
       <Route path="/agents"     element={<PrivateRoute><AgentsPage /></PrivateRoute>} />
@@ -52,7 +66,7 @@ export default function App() {
       <Route path="/rates"      element={<PrivateRoute><RatesPage /></PrivateRoute>} />
       <Route path="/awb-stock"  element={<PrivateRoute><AwbStockPage /></PrivateRoute>} />
       <Route path="/airports"   element={<PrivateRoute><AirportsPage /></PrivateRoute>} />
-      <Route path="/users"      element={<PrivateRoute><UsersPage /></PrivateRoute>} />
+      <Route path="/users"      element={<AdminRoute><UsersPage /></AdminRoute>} />
 
       <Route path="*" element={<Navigate to={currentUser ? '/dashboard' : '/login'} replace />} />
     </Routes>

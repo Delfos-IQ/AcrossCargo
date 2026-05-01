@@ -29,7 +29,12 @@ service cloud.firestore {
       // Users can read their own profile. Admins can read all profiles.
       allow read:   if isAuthenticated() && (request.auth.uid == uid || isAdmin());
       // Only admins can create / update / delete user profiles.
-      allow write:  if isAdmin();
+      // Role must be one of the allowed values to prevent privilege escalation.
+      allow create: if isAdmin()
+                    && request.resource.data.role in ['admin', 'operator'];
+      allow update: if isAdmin()
+                    && request.resource.data.role in ['admin', 'operator'];
+      allow delete: if isAdmin();
     }
 
     // ── Bookings ───────────────────────────────────────────────────────────────
@@ -51,14 +56,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ── Shippers ───────────────────────────────────────────────────────────────
-    match /shippers/{docId} {
+    // ── Shipper Profiles ───────────────────────────────────────────────────────
+    match /shipperProfiles/{docId} {
       allow read:  if isAuthenticated();
       allow write: if isAdmin();
     }
 
-    // ── Consignees ─────────────────────────────────────────────────────────────
-    match /consignees/{docId} {
+    // ── Consignee Profiles ─────────────────────────────────────────────────────
+    match /consigneeProfiles/{docId} {
       allow read:  if isAuthenticated();
       allow write: if isAdmin();
     }
@@ -75,8 +80,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ── Rates ──────────────────────────────────────────────────────────────────
-    match /rates/{docId} {
+    // ── Rate Table Entries ─────────────────────────────────────────────────────
+    match /rateTableEntries/{docId} {
+      allow read:  if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ── AWB Stock Masters ──────────────────────────────────────────────────────
+    match /awbStockMasters/{docId} {
       allow read:  if isAuthenticated();
       allow write: if isAdmin();
     }
@@ -84,15 +95,31 @@ service cloud.firestore {
     // ── AWB Stock Allocations ──────────────────────────────────────────────────
     // Agents need read access (to see available stock) and update access
     // (to increment usedCount when a booking consumes an AWB number).
+    // Restricted: agents can only update their OWN allocation, not others'.
     // Only admins can create or delete allocations.
     match /awbStockAllocations/{docId} {
-      allow read:          if isAuthenticated();
-      allow update:        if isAuthenticated();   // agents update usedCount
+      allow read:           if isAuthenticated();
+      allow update:         if isAdmin()
+                            || (isAuthenticated() && resource.data.agentId == myAgentId());
       allow create, delete: if isAdmin();
     }
 
+    // ── AWB Usage Log ──────────────────────────────────────────────────────────
+    match /awbUsage/{docId} {
+      allow read:   if isAuthenticated();
+      allow create: if isAuthenticated();   // agents log AWB usage on booking
+      allow update, delete: if isAdmin();
+    }
+
+    // ── App Settings (datos bancarios, configuración global) ───────────────────
+    // Solo admins pueden leer y escribir — contiene IBAN, BIC y otros datos sensibles.
+    match /appSettings/{docId} {
+      allow read:  if isAdmin();
+      allow write: if isAdmin();
+    }
+
     // ── IATA Airport Codes ─────────────────────────────────────────────────────
-    match /iataAirportCodes/{docId} {
+    match /managedIataAirportCodes/{docId} {
       allow read:  if isAuthenticated();
       allow write: if isAdmin();
     }

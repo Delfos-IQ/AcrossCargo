@@ -3,7 +3,7 @@
     "rules": "firestore.rules"
   },
   "hosting": {
-    "site": "gssa-cargo-v2",
+    "site": "gssa-cargo-v2-471e0",
     "public": "dist",
     "ignore": [
       "firebase.json",

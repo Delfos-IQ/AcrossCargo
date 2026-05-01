@@ -1,13 +1,12 @@
-name: Deploy
+name: Deploy to Firebase Hosting
 
 on:
   push:
     branches: [main]
 
-# ── Build check — Netlify handles the actual deploy automatically ──────────────
 jobs:
-  build:
-    name: Build
+  build-and-deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
 
     steps:
@@ -33,3 +32,11 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID:              ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID:      ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: gssa-cargo-v2

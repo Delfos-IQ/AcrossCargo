@@ -178,7 +178,7 @@ export default function BillingPage() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Account holder</label>
-                  <input className="form-input" value={bankHolder} onChange={e => setBankHolder(e.target.value)} placeholder="Across Aviation SLU" />
+                  <input className="form-input" value={bankHolder} onChange={e => setBankHolder(e.target.value)} placeholder="AcrossCargo" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Bank name</label>
@@ -242,6 +242,12 @@ export default function BillingPage() {
                         onClick={() => generateInvoicePdf(selectedAgent, bookingsForInvoice, dateFrom, dateTo, {
                           ivaRate,
                           bankDetails: { holder: bankHolder, bank: bankName, iban: bankIban, bic: bankBic },
+                          companyInfo: {
+                            companyName:    globalSettings.companyName,
+                            companyAddress: globalSettings.companyAddress,
+                            companyCity:    globalSettings.companyCity,
+                            companyCif:     globalSettings.companyCif,
+                          },
                         })}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ width: 15, height: 15 }}>

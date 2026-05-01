@@ -193,10 +193,12 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
 /* ──────────────────────────────────────────────────────────────
    CARGO SALES REPORT PDF  (landscape A4)
 ─────────────────────────────────────────────────────────────── */
-export const generateCargoSalesReportPdf = (reportBookings, dateFrom, dateTo, agentProfiles = [], iataAirportCodes = []) => {
+export const generateCargoSalesReportPdf = (reportBookings, dateFrom, dateTo, agentProfiles = [], iataAirportCodes = [], companyInfo = {}) => {
   if (!reportBookings?.length) return;
   const { jsPDF } = window.jspdf;
   const pdoc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
+
+  const companyName = companyInfo.companyName || 'AcrossCargo';
 
   const firstBooking = reportBookings[0] || {};
   const getCity = (code) => iataAirportCodes.find(c => c.code === code)?.city || code || 'N/A';
@@ -269,7 +271,7 @@ export const generateCargoSalesReportPdf = (reportBookings, dateFrom, dateTo, ag
     didDrawPage: (data) => {
       pdoc.setFontSize(8);
       pdoc.setTextColor(180, 180, 180);
-      pdoc.text('Across Aviation SLU', data.settings.margin.left, pdoc.internal.pageSize.height - 8);
+      pdoc.text(companyName, data.settings.margin.left, pdoc.internal.pageSize.height - 8);
       pdoc.text(`Page ${data.pageNumber}`, pageW - data.settings.margin.right, pdoc.internal.pageSize.height - 8, { align: 'right' });
     },
   });
@@ -314,12 +316,18 @@ const getQrDataUrl = (text) => {
 /* ──────────────────────────────────────────────────────────────
    INVOICE PDF  (portrait A4)
 ─────────────────────────────────────────────────────────────── */
-export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo, { ivaRate = 0, bankDetails = {} } = {}) => {
+export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo, { ivaRate = 0, bankDetails = {}, companyInfo = {} } = {}) => {
   if (!agent || !bookings?.length) return;
   const { jsPDF } = window.jspdf;
   const pdoc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const pageW = pdoc.internal.pageSize.getWidth();
   let y = 20;
+
+  // Company identity from Firestore settings (no hardcoding)
+  const companyName    = companyInfo.companyName    || 'AcrossCargo';
+  const companyAddress = companyInfo.companyAddress || '';
+  const companyCity    = companyInfo.companyCity    || '';
+  const companyCif     = companyInfo.companyCif     || '';
 
   // Title
   pdoc.setFontSize(22);
@@ -331,7 +339,7 @@ export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo, { ivaRate 
   pdoc.setFontSize(9);
   pdoc.setFont('helvetica', 'normal');
   pdoc.setTextColor(55, 65, 81);
-  ['Across Aviation SLU', 'C/Juan Díaz, 2 2ª Planta', '29015 Málaga, España', 'CIF: B93644862'].forEach(line => {
+  [companyName, companyAddress, companyCity, companyCif ? `CIF: ${companyCif}` : ''].filter(Boolean).forEach(line => {
     pdoc.text(line, 20, y);
     y += 5;
   });
@@ -464,7 +472,7 @@ export const generateInvoicePdf = (agent, bookings, dateFrom, dateTo, { ivaRate 
   y += 4;
 
   // ── Verifactu QR (Real Decreto 1007/2023) ──────────────────
-  const COMPANY_NIF  = 'B93644862';                       // CIF without hyphen
+  const COMPANY_NIF  = companyCif || '';                  // CIF desde Firestore
   const invoiceDate  = new Date().toLocaleDateString('en-GB'); // DD/MM/YYYY
   const verifactuUrl = buildVerifactuUrl(COMPANY_NIF, invNum, invoiceDate, grandTotal);
   const qrImg        = getQrDataUrl(verifactuUrl);

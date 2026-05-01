@@ -7,7 +7,7 @@ import Footer from '../../components/Footer.jsx';
 import toast from 'react-hot-toast';
 
 export default function ReportsPage() {
-  const { bookings, agentProfiles, iataAirportCodes, isAdmin, myAgentId } = useAppContext();
+  const { bookings, agentProfiles, iataAirportCodes, isAdmin, myAgentId, globalSettings } = useAppContext();
   const [dateFrom,   setDateFrom]   = useState('');
   const [dateTo,     setDateTo]     = useState('');
   const [reportData, setReportData] = useState([]);
@@ -75,7 +75,7 @@ export default function ReportsPage() {
               </div>
               {reportData.length > 0 && (
                 <button
-                  onClick={() => generateCargoSalesReportPdf(reportData, dateFrom, dateTo, agentProfiles, iataAirportCodes)}
+                  onClick={() => generateCargoSalesReportPdf(reportData, dateFrom, dateTo, agentProfiles, iataAirportCodes, globalSettings)}
                   className="button button-secondary"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ width: 16, height: 16 }}>

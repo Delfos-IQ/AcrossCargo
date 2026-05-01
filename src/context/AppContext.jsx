@@ -33,16 +33,23 @@ export const AppProvider = ({ children }) => {
   const isOperator = currentUserProfile?.role === 'operator';
   const myAgentId  = currentUserProfile?.agentId || null;
 
-  // Global settings — default 70/30 split until Firestore doc is created
+  // Global settings — leídos de appSettings/global en Firestore
   const globalSettings = useMemo(() => {
     const doc = (appSettings || []).find(s => s.id === 'global') || {};
     return {
+      // Reparto de beneficios
       casSplitPct:    doc.casSplitPct    ?? 70,
       acrossSplitPct: doc.acrossSplitPct ?? 30,
+      // Datos bancarios (para facturas)
       bankHolder:     doc.bankHolder     ?? '',
       bankName:       doc.bankName       ?? '',
       bankIban:       doc.bankIban       ?? '',
       bankBic:        doc.bankBic        ?? '',
+      // Identidad de la empresa (PDFs, emails) — configurables sin tocar código
+      companyName:    doc.companyName    ?? 'AcrossCargo',
+      companyAddress: doc.companyAddress ?? '',
+      companyCity:    doc.companyCity    ?? '',
+      companyCif:     doc.companyCif     ?? '',
     };
   }, [appSettings]);
 

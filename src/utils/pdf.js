@@ -4,6 +4,7 @@
  */
 import { airlinePrefixData } from '../data/airlines.js';
 import { formatNumberWithSeparators } from './numbers.js';
+import { formatDateDDMMM } from './dates.js';
 
 const formatDateStr = (val) => {
   if (!val) return 'N/A';
@@ -18,13 +19,6 @@ const formatDateStr = (val) => {
   } catch { return 'N/A'; }
 };
 
-const formatDDMMM = (dateStr) => {
-  if (!dateStr) return 'NIL';
-  const d = new Date(dateStr + 'T12:00:00');
-  if (isNaN(d)) return 'NIL';
-  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  return String(d.getDate()).padStart(2,'0') + months[d.getMonth()];
-};
 
 /* ──────────────────────────────────────────────────────────────
    BOOKING CONFIRMATION PDF
@@ -118,7 +112,7 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
       head: [['Flight', 'Date', 'Origin', 'Destination', 'STD', 'STA', 'Status']],
       body: booking.flightSegments.map(seg => {
         const fs = flightSchedules.find(s => s.flightNumber?.toUpperCase() === seg.flightNumber?.toUpperCase());
-        return [seg.flightNumber || 'NIL', formatDDMMM(seg.departureDate), seg.segmentOrigin || '—', seg.segmentDestination || '—', fs?.std || '—', fs?.sta || '—', booking.bookingStatus || '—'];
+        return [seg.flightNumber || 'NIL', formatDateDDMMM(seg.departureDate), seg.segmentOrigin || '—', seg.segmentDestination || '—', fs?.std || '—', fs?.sta || '—', booking.bookingStatus || '—'];
       }),
       theme: 'grid',
       headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontSize: 8 },
@@ -232,7 +226,7 @@ export const generateCargoSalesReportPdf = (reportBookings, dateFrom, dateTo, ag
       `${b.awbInputPrefix}-${b.awbInputNumber}`,
       formatDateStr(b.createdAt),
       flight.flightNumber || '',
-      formatDDMMM(flight.departureDate),
+      formatDateDDMMM(flight.departureDate),
       `${b.origin || ''}-${b.destination || ''}`,
       formatNumberWithSeparators(b.weightKg, 1),
       formatNumberWithSeparators(b.chargeableWeightKg, 1),

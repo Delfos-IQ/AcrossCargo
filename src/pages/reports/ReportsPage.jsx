@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../../context/AppContext.jsx';
 import { useScopedBookings } from '../../hooks/useScopedBookings.js';
-import { buildUTCDateRange, formatDate } from '../../utils/dates.js';
+import { buildUTCDateRange, formatDate, filterBookingsByDateRange } from '../../utils/dates.js';
 import { generateCargoSalesReportPdf } from '../../utils/pdf.js';
 import Layout from '../../components/Layout.jsx';
 import Footer from '../../components/Footer.jsx';
@@ -21,10 +21,7 @@ export default function ReportsPage() {
       return;
     }
     const { startDate, endDate } = buildUTCDateRange(dateFrom, dateTo);
-    const filtered = scopedBookings.filter(b => {
-      const d = b.createdAt?.toDate();
-      return d && d >= startDate && d <= endDate;
-    });
+    const filtered = filterBookingsByDateRange(scopedBookings, startDate, endDate);
     setReportData(filtered);
     setGenerated(true);
     if (!filtered.length) toast('No bookings found in that date range.', { icon: 'ℹ️' });

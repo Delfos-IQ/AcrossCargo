@@ -49,6 +49,22 @@ export const buildUTCDateRange = (from, to) => {
 };
 
 /**
+ * Filtra un array de bookings por rango de fechas (createdAt).
+ * @param {Array}  bookings  - Array de bookings con campo createdAt (Firestore Timestamp)
+ * @param {Date}   startDate - Fecha inicio (UTC)
+ * @param {Date}   endDate   - Fecha fin (UTC)
+ * @returns {Array} Bookings dentro del rango, ordenados por fecha ascendente
+ */
+export const filterBookingsByDateRange = (bookings, startDate, endDate) => {
+  return bookings
+    .filter(b => {
+      const d = b.createdAt?.toDate();
+      return d && d >= startDate && d <= endDate;
+    })
+    .sort((a, b) => a.createdAt.toDate() - b.createdAt.toDate());
+};
+
+/**
  * Convierte un objeto Date a string YYYY-MM-DD en UTC.
  */
 export const toYyyyMmDd = (date) => {

@@ -19,10 +19,18 @@
 
 export default {
   async fetch(request, env) {
+    const allowedOrigins = [
+      'https://acrosscargo.com',
+      'https://www.acrosscargo.com',
+      'https://app.acrosscargo.com',
+      'https://gssa-cargo-v2-471e0.web.app',
+    ];
+    const origin = request.headers.get('Origin') || '';
     const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
+      'Vary': 'Origin',
     };
 
     // Handle CORS preflight

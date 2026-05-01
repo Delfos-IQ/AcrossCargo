@@ -90,6 +90,7 @@ export default function CrudPage({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isAdmin) { toast.error('No tienes permisos para realizar esta acción'); return; }
     setSaving(true);
     try {
       if (isEditing) {
@@ -120,6 +121,7 @@ export default function CrudPage({
   };
 
   const handleDelete = async (id) => {
+    if (!isAdmin) { toast.error('No tienes permisos para realizar esta acción'); return; }
     try {
       if (onBeforeDelete) await onBeforeDelete(id, items);
       await deleteDoc(doc(db, collectionName, id));

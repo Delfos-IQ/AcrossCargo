@@ -3,7 +3,7 @@ import { db } from '../../services/firebase.js';
 import { doc, setDoc } from 'firebase/firestore';
 import { useAppContext } from '../../context/AppContext.jsx';
 import { useScopedBookings } from '../../hooks/useScopedBookings.js';
-import { buildUTCDateRange, formatDate } from '../../utils/dates.js';
+import { buildUTCDateRange, formatDate, filterBookingsByDateRange } from '../../utils/dates.js';
 import { generateInvoicePdf } from '../../utils/pdf.js';
 import Layout from '../../components/Layout.jsx';
 import Footer from '../../components/Footer.jsx';
@@ -68,12 +68,8 @@ export default function BillingPage() {
       return;
     }
     const { startDate, endDate } = buildUTCDateRange(dateFrom, dateTo);
-    const result = scopedBookings
-      .filter(b => {
-        const d = b.createdAt?.toDate();
-        return b.selectedAgentProfileId === selectedAgentId && d && d >= startDate && d <= endDate;
-      })
-      .sort((a, b) => a.createdAt.toDate() - b.createdAt.toDate());
+    const result = filterBookingsByDateRange(scopedBookings, startDate, endDate)
+      .filter(b => b.selectedAgentProfileId === selectedAgentId);
     setBookingsForInvoice(result);
     setFiltered(true);
     if (!result.length) toast('No bookings found for that agent and date range.', { icon: 'ℹ️' });

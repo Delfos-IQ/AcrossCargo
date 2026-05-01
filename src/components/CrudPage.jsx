@@ -4,6 +4,7 @@ import {
   collection, addDoc, updateDoc, deleteDoc, doc
 } from 'firebase/firestore';
 import { useFirestoreCollection } from '../hooks/useFirestoreCollection.js';
+import { useAppContext } from '../context/AppContext.jsx';
 import toast from 'react-hot-toast';
 
 /**
@@ -44,6 +45,7 @@ export default function CrudPage({
   sortFn,
   extraActions,
 }) {
+  const { isAdmin } = useAppContext();
   const { data: items, isLoading } = useFirestoreCollection(collectionName);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -140,12 +142,14 @@ export default function CrudPage({
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           {extraActions}
-          <button className="button button-primary" onClick={openAdd}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" style={{ width: 16, height: 16 }}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            New
-          </button>
+          {isAdmin && (
+            <button className="button button-primary" onClick={openAdd}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" style={{ width: 16, height: 16 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              New
+            </button>
+          )}
         </div>
       </div>
 
@@ -184,7 +188,7 @@ export default function CrudPage({
                   {listColumns.map(col => (
                     <th key={col.label}>{col.label}</th>
                   ))}
-                  <th style={{ width: 100 }}>Actions</th>
+                  {isAdmin && <th style={{ width: 100 }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -195,43 +199,45 @@ export default function CrudPage({
                         {col.render ? col.render(item) : (item[col.key] ?? '—')}
                       </td>
                     ))}
-                    <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button
-                          className="button button-secondary"
-                          style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                          onClick={() => openEdit(item)}
-                        >
-                          Edit
-                        </button>
-                        {deleteConfirmId === item.id ? (
-                          <>
-                            <button
-                              className="button button-danger"
-                              style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                              onClick={() => handleDelete(item.id)}
-                            >
-                              Confirm
-                            </button>
+                    {isAdmin && (
+                      <td>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            className="button button-secondary"
+                            style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                            onClick={() => openEdit(item)}
+                          >
+                            Edit
+                          </button>
+                          {deleteConfirmId === item.id ? (
+                            <>
+                              <button
+                                className="button button-danger"
+                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                onClick={() => handleDelete(item.id)}
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                className="button button-ghost"
+                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                onClick={() => setDeleteConfirmId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
                             <button
                               className="button button-ghost"
-                              style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                              onClick={() => setDeleteConfirmId(null)}
+                              style={{ padding: '4px 10px', fontSize: '0.75rem', color: 'var(--color-red-600)' }}
+                              onClick={() => setDeleteConfirmId(item.id)}
                             >
-                              Cancel
+                              Delete
                             </button>
-                          </>
-                        ) : (
-                          <button
-                            className="button button-ghost"
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', color: 'var(--color-red-600)' }}
-                            onClick={() => setDeleteConfirmId(item.id)}
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

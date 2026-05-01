@@ -1,14 +1,7 @@
 /**
  * Genera el mensaje FFR (Freight Forwarder Request) en formato IATA Cargo-IMP.
  */
-
-const formatDateDDMMM = (dateStr) => {
-  if (!dateStr) return 'NIL';
-  const d = new Date(dateStr + 'T12:00:00');
-  if (isNaN(d)) return 'NIL';
-  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  return String(d.getDate()).padStart(2,'0') + months[d.getMonth()];
-};
+import { formatDateDDMMM } from './dates.js';
 
 export const generateFFRMessage = (booking) => {
   let msg = 'FFR/7\n';

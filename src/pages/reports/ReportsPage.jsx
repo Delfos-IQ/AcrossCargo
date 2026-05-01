@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../../context/AppContext.jsx';
+import { useScopedBookings } from '../../hooks/useScopedBookings.js';
 import { buildUTCDateRange, formatDate } from '../../utils/dates.js';
 import { generateCargoSalesReportPdf } from '../../utils/pdf.js';
 import Layout from '../../components/Layout.jsx';
@@ -7,17 +8,12 @@ import Footer from '../../components/Footer.jsx';
 import toast from 'react-hot-toast';
 
 export default function ReportsPage() {
-  const { bookings, agentProfiles, iataAirportCodes, isAdmin, myAgentId, globalSettings } = useAppContext();
+  const { agentProfiles, iataAirportCodes, isAdmin, globalSettings } = useAppContext();
+  const scopedBookings = useScopedBookings();
   const [dateFrom,   setDateFrom]   = useState('');
   const [dateTo,     setDateTo]     = useState('');
   const [reportData, setReportData] = useState([]);
   const [generated,  setGenerated]  = useState(false);
-
-  // Agents only see their own bookings
-  const scopedBookings = React.useMemo(() => {
-    const all = bookings || [];
-    return isAdmin ? all : all.filter(b => b.agent_id === myAgentId);
-  }, [bookings, isAdmin, myAgentId]);
 
   const handleGenerate = () => {
     if (!dateFrom || !dateTo) {

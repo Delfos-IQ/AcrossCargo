@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../../services/firebase.js';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { useAppContext } from '../../context/AppContext.jsx';
+import { useScopedBookings } from '../../hooks/useScopedBookings.js';
 import { formatDate, toYyyyMmDd } from '../../utils/dates.js';
 import { generateFFRMessage } from '../../utils/ffr.js';
 import { generateBookingConfirmationPdf } from '../../utils/pdf.js';
@@ -159,10 +160,7 @@ export default function BookingTable({ onEdit }) {
   };
 
   // Agents only see their own bookings; admins see all
-  const scopedBookings = useMemo(() => {
-    const all = bookings || [];
-    return isAdmin ? all : all.filter(b => b.agent_id === myAgentId);
-  }, [bookings, isAdmin, myAgentId]);
+  const scopedBookings = useScopedBookings();
 
   const filtered = useMemo(() => {
     return scopedBookings.filter(b => {

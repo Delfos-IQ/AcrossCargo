@@ -19,10 +19,18 @@ export const useFirestoreCollection = (collectionName, orderByField = null, orde
       ? query(collRef, orderBy(orderByField, orderDirection))
       : query(collRef);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setIsLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error(`[Firestore] Error en colección "${collectionName}":`, error.message);
+        setData([]);
+        setIsLoading(false);
+      }
+    );
     return () => unsubscribe();
   }, [collectionName, orderByField, orderDirection]);
 

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../../services/firebase.js';
 import { doc, setDoc } from 'firebase/firestore';
 import { useAppContext } from '../../context/AppContext.jsx';
+import { useScopedBookings } from '../../hooks/useScopedBookings.js';
 import { buildUTCDateRange, formatDate } from '../../utils/dates.js';
 import { generateInvoicePdf } from '../../utils/pdf.js';
 import Layout from '../../components/Layout.jsx';
@@ -9,7 +10,7 @@ import Footer from '../../components/Footer.jsx';
 import toast from 'react-hot-toast';
 
 export default function BillingPage() {
-  const { bookings, agentProfiles, isAdmin, myAgentId, globalSettings } = useAppContext();
+  const { agentProfiles, isAdmin, myAgentId, globalSettings } = useAppContext();
   const [selectedAgentId,    setSelectedAgentId]    = useState('');
   const [dateFrom,           setDateFrom]           = useState('');
   const [dateTo,             setDateTo]             = useState('');
@@ -46,10 +47,7 @@ export default function BillingPage() {
   };
 
   // Agents only see their own bookings; pre-select the agent dropdown for them
-  const scopedBookings = useMemo(() => {
-    const all = bookings || [];
-    return isAdmin ? all : all.filter(b => b.agent_id === myAgentId);
-  }, [bookings, isAdmin, myAgentId]);
+  const scopedBookings = useScopedBookings();
 
   // Auto-select the agent profile for agent-role users
   useEffect(() => {

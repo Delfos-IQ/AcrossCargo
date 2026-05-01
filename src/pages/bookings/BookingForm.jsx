@@ -15,6 +15,8 @@ import toast from 'react-hot-toast';
 import { notifyBookingCreated, notifyAwbStockAlert, notifyBookingStatusChanged } from '../../services/notifications.js';
 import { generateFFRMessage } from '../../utils/ffr.js';
 import { generateBookingConfirmationPdf } from '../../utils/pdf.js';
+import FfrModal from './FfrModal.jsx';
+import EmailModal from './EmailModal.jsx';
 
 /* ─── Searchable agent dropdown ─── */
 function AgentSearchSelect({ agents = [], value, onChange, disabled }) {
@@ -1384,157 +1386,23 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
 
       {/* ── FFR MODAL ── */}
       {showFfrModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
-          background: 'rgba(0,0,0,0.55)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 'var(--space-4)',
-        }} onClick={() => setShowFfrModal(false)}>
-          <div style={{
-            background: 'var(--color-surface)',
-            borderRadius: 'var(--radius-lg)',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-            width: '100%', maxWidth: 640,
-            maxHeight: '85vh', display: 'flex', flexDirection: 'column',
-          }} onClick={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: 'var(--space-4) var(--space-5)',
-              borderBottom: '1px solid var(--color-border)',
-            }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-text)' }}>📋 FFR Message</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', marginTop: 2 }}>
-                  IATA Cargo-IMP format
-                </div>
-              </div>
-              <button type="button" className="button button-ghost button-sm"
-                onClick={() => setShowFfrModal(false)} style={{ fontSize: '1.2rem', lineHeight: 1 }}>×</button>
-            </div>
-
-            {/* Body — monospaced FFR text */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4) var(--space-5)' }}>
-              <pre style={{
-                fontFamily: "'Courier New', monospace",
-                fontSize: '0.85rem',
-                lineHeight: 1.7,
-                color: '#e2e8f0',
-                background: '#141322',
-                borderRadius: 'var(--radius-md)',
-                padding: 'var(--space-4)',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                margin: 0,
-              }}>{ffrText}</pre>
-            </div>
-
-            {/* Footer */}
-            <div style={{
-              display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end',
-              padding: 'var(--space-4) var(--space-5)',
-              borderTop: '1px solid var(--color-border)',
-            }}>
-              <button type="button" className="button button-ghost"
-                onClick={() => setShowFfrModal(false)}>
-                Close
-              </button>
-              <button type="button" className="button button-primary"
-                onClick={() => {
-                  navigator.clipboard.writeText(ffrText).then(() => {
-                    setFfrCopied(true);
-                    setTimeout(() => setFfrCopied(false), 2000);
-                  });
-                }}>
-                {ffrCopied ? '✓ Copied!' : '📋 Copy FFR'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <FfrModal
+          ffrText={ffrText}
+          ffrCopied={ffrCopied}
+          setFfrCopied={setFfrCopied}
+          onClose={() => setShowFfrModal(false)}
+        />
       )}
+
       {/* ── EMAIL MODAL ── */}
       {showEmailModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
-          background: 'rgba(0,0,0,0.55)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 'var(--space-4)',
-        }} onClick={() => setShowEmailModal(false)}>
-          <div style={{
-            background: 'var(--color-surface)',
-            borderRadius: 'var(--radius-lg)',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-            width: '100%', maxWidth: 520,
-            display: 'flex', flexDirection: 'column',
-          }} onClick={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: 'var(--space-4) var(--space-5)',
-              borderBottom: '1px solid var(--color-border)',
-            }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '1rem' }}>✉ Send Booking PDF by Email</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', marginTop: 2 }}>
-                  The PDF will be attached automatically and sent directly
-                </div>
-              </div>
-              <button type="button" className="button button-ghost button-sm"
-                onClick={() => setShowEmailModal(false)} style={{ fontSize: '1.2rem', lineHeight: 1 }}>×</button>
-            </div>
-
-            {/* Body */}
-            <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              <div className="form-group">
-                <label className="form-label required">To (email address)</label>
-                <input className="form-input" type="email" value={emailForm.to}
-                  onChange={e => setEmailForm(f => ({ ...f, to: e.target.value }))}
-                  placeholder="agent@example.com" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">CC (optional)</label>
-                <input className="form-input" type="email" value={emailForm.cc}
-                  onChange={e => setEmailForm(f => ({ ...f, cc: e.target.value }))}
-                  placeholder="copy@example.com" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Subject</label>
-                <input className="form-input" value={emailForm.subject}
-                  onChange={e => setEmailForm(f => ({ ...f, subject: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Message</label>
-                <textarea className="form-textarea" rows={5} value={emailForm.body}
-                  onChange={e => setEmailForm(f => ({ ...f, body: e.target.value }))} />
-              </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', margin: 0 }}>
-                The PDF is generated and attached automatically — no manual steps needed.
-              </p>
-            </div>
-
-            {/* Footer */}
-            <div style={{
-              display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end',
-              padding: 'var(--space-4) var(--space-5)',
-              borderTop: '1px solid var(--color-border)',
-            }}>
-              <button type="button" className="button button-ghost"
-                onClick={() => setShowEmailModal(false)} disabled={isSendingEmail}>Cancel</button>
-              <button type="button" className="button button-primary"
-                disabled={!emailForm.to || isSendingEmail}
-                onClick={handleSendEmail}>
-                {isSendingEmail ? (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                    Sending…
-                  </span>
-                ) : '✉ Send Email'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <EmailModal
+          emailForm={emailForm}
+          setEmailForm={setEmailForm}
+          isSendingEmail={isSendingEmail}
+          handleSendEmail={handleSendEmail}
+          onClose={() => setShowEmailModal(false)}
+        />
       )}
     </form>
   );

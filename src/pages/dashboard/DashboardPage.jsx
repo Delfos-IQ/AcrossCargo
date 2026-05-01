@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext.jsx';
+import { useScopedBookings } from '../../hooks/useScopedBookings.js';
 import Layout from '../../components/Layout.jsx';
 import Footer from '../../components/Footer.jsx';
 
@@ -73,14 +74,9 @@ function NavCard({ title, description, path, color, icon, onClick }) {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { bookings, agentProfiles, flightSchedules, awbStockAllocations, currentUserProfile, isAdmin, isOperator, myAgentId } = useAppContext();
+  const { agentProfiles, flightSchedules, awbStockAllocations, currentUserProfile, isAdmin, isOperator } = useAppContext();
+  const myBookings = useScopedBookings();
   const userRole = currentUserProfile?.role || 'user';
-
-  // Agents only see their own bookings in stats
-  const myBookings = React.useMemo(() => {
-    const all = bookings || [];
-    return isAdmin ? all : all.filter(b => b.agent_id === myAgentId);
-  }, [bookings, isAdmin, myAgentId]);
 
   // AWB stock alerts count (admin only)
   const awbAlertCount = React.useMemo(() => {

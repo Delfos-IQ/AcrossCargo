@@ -435,7 +435,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
         pdfFilename = `BookingConfirmation_${(bk.awb || 'AWB').replace('-', '')}.pdf`;
       }
 
-      const res = await fetch('https://acrosscargo.pedicode-app.workers.dev', {
+      const res = await fetch(import.meta.env.VITE_EMAIL_WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

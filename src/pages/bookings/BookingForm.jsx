@@ -135,6 +135,24 @@ function AgentSearchSelect({ agents = [], value, onChange, disabled }) {
   );
 }
 
+/* ─── GHA type badge colours ─── */
+const GHA_TYPE_BADGE = {
+  export:      { bg: '#dbeafe', color: '#1e40af', label: 'Export' },
+  import:      { bg: '#d1fae5', color: '#065f46', label: 'Import' },
+  supervisors: { bg: '#fef3c7', color: '#92400e', label: 'Supervisors' },
+};
+function GhaTypeBadge({ type, style = {} }) {
+  if (!type) return null;
+  const s = GHA_TYPE_BADGE[type] || { bg: 'var(--color-gray-100)', color: 'var(--color-gray-600)', label: type };
+  return (
+    <span style={{
+      display: 'inline-block', padding: '1px 7px', borderRadius: 10,
+      fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.03em',
+      background: s.bg, color: s.color, ...style,
+    }}>{s.label}</span>
+  );
+}
+
 /* ─── Searchable GHA dropdown ─── */
 function GhaSearchSelect({ ghas = [], value, onChange, disabled }) {
   const selected = ghas.find(g => g.id === value);
@@ -154,11 +172,20 @@ function GhaSearchSelect({ ghas = [], value, onChange, disabled }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? sorted.filter(g => g.name?.toLowerCase().includes(q) || g.shortName?.toLowerCase().includes(q) || g.location?.toLowerCase().includes(q)) : sorted;
+    return q ? sorted.filter(g =>
+      g.name?.toLowerCase().includes(q) ||
+      g.shortName?.toLowerCase().includes(q) ||
+      g.location?.toLowerCase().includes(q) ||
+      g.type?.toLowerCase().includes(q)
+    ) : sorted;
   }, [sorted, query]);
 
   const handleSelect = (gha) => { onChange(gha.id); setQuery(''); setOpen(false); };
   const handleClear  = (e)   => { e.stopPropagation(); onChange(''); setQuery(''); setOpen(false); };
+
+  const displayLabel = selected
+    ? `${selected.name}${selected.location ? ` — ${selected.location}` : ''}`
+    : '';
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -177,10 +204,14 @@ function GhaSearchSelect({ ghas = [], value, onChange, disabled }) {
           style={{ width: 15, height: 15, marginLeft: 10, flexShrink: 0, color: 'var(--color-gray-400)' }}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
         </svg>
+        {/* Show type badge inline when a GHA is selected and input is closed */}
+        {selected && !open && (
+          <GhaTypeBadge type={selected.type} style={{ marginLeft: 8, flexShrink: 0 }} />
+        )}
         <input
           type="text" disabled={disabled}
           placeholder={selected ? selected.name : 'Search GHA…'}
-          value={open ? query : (selected ? `${selected.name}${selected.location ? ` — ${selected.location}` : ''}` : '')}
+          value={open ? query : displayLabel}
           style={{ flex: 1, border: 'none', outline: 'none', padding: '8px 8px', fontSize: 'var(--font-size-sm)', background: 'transparent', color: open ? 'var(--color-gray-900)' : (selected ? 'var(--color-gray-900)' : 'var(--color-gray-400)'), cursor: disabled ? 'not-allowed' : 'text' }}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => !disabled && setOpen(true)}
@@ -199,12 +230,15 @@ function GhaSearchSelect({ ghas = [], value, onChange, disabled }) {
           {filtered.length === 0 ? (
             <div style={{ padding: '10px 14px', fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-400)' }}>No GHAs found</div>
           ) : filtered.map(g => (
-            <div key={g.id} onClick={() => handleSelect(g)}
-              style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 'var(--font-size-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            <div key={g.id} onMouseDown={e => { e.preventDefault(); handleSelect(g); }}
+              style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 'var(--font-size-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--color-gray-50)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              <span style={{ fontWeight: 500 }}>{g.name}</span>
-              <span style={{ color: 'var(--color-gray-400)', fontSize: '0.75rem' }}>{g.shortName}{g.location ? ` · ${g.location}` : ''}</span>
+              <span style={{ fontWeight: 500, flex: 1 }}>{g.name}</span>
+              <GhaTypeBadge type={g.type} />
+              <span style={{ color: 'var(--color-gray-400)', fontSize: '0.75rem', flexShrink: 0 }}>
+                {g.shortName}{g.location ? ` · ${g.location}` : ''}
+              </span>
             </div>
           ))}
         </div>
@@ -1525,8 +1559,9 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
                 onChange={(ghaId) => {
                   const gha = (ghaProfiles || []).find(g => g.id === ghaId);
                   if (!gha) { setForm(f => ({ ...f, selectedGhaId: '', osiGhaText: '' })); return; }
+                  const typeLabel = gha.type ? ` [${gha.type.charAt(0).toUpperCase() + gha.type.slice(1)}]` : '';
                   const text = [
-                    gha.name,
+                    gha.name + typeLabel,
                     gha.shortName ? `(${gha.shortName})` : '',
                     gha.location  ? `— ${gha.location}`  : '',
                     gha.phone     ? `| Tel: ${gha.phone}` : '',

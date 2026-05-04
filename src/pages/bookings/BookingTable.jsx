@@ -60,6 +60,38 @@ function FfrModal({ booking, onClose }) {
   );
 }
 
+/* ── FBL email helpers ─────────────────────────────── */
+
+/** Map 2-letter IATA airline codes → team name for FBL email greeting */
+const CARRIER_TEAM_MAP = {
+  IB: 'IAGC Team', BA: 'IAGC Team', VY: 'IAGC Team', I2: 'IAGC Team',
+  AV: 'AV Team',
+  TP: 'TAP Team',
+};
+
+/** Extract carrier code from flight number (e.g. "IB1234" → "IB", "TP123" → "TP") */
+function getCarrierTeam(flightNumber = '') {
+  const match = flightNumber.match(/^([A-Z]{2})\d/i);
+  if (!match) return 'Team';
+  const code = match[1].toUpperCase();
+  return CARRIER_TEAM_MAP[code] || `${code} Team`;
+}
+
+/** Time-of-day greeting based on local clock */
+function getTimeGreeting() {
+  const h = new Date().getHours();
+  if (h >= 5  && h < 12) return 'Good morning';
+  if (h >= 12 && h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/** Build default FBL email body */
+function buildFblEmailBody(flightNumber) {
+  const team     = getCarrierTeam(flightNumber);
+  const greeting = getTimeGreeting();
+  return `Dear ${team},\n\n${greeting}. Please, can you be so kind to book the following expedition:\n\n`;
+}
+
 /* ── helpers ───────────────────────────────────────── */
 
 /** Normalises a createdAt value (Firestore Timestamp or ISO string) → 'YYYY-MM-DD' */
@@ -126,6 +158,9 @@ export default function BookingTable({ onEdit }) {
   const [showFblModal, setShowFblModal] = useState(false);
   const [generatingFbl, setGeneratingFbl] = useState(false);
   const [selectedFblFlight, setSelectedFblFlight] = useState('');
+  const [showFblEmailModal, setShowFblEmailModal] = useState(false);
+  const [isSendingFblEmail, setIsSendingFblEmail] = useState(false);
+  const [fblEmailForm, setFblEmailForm] = useState({ to: '', cc: '', subject: '', body: '' });
 
   const PAGE_SIZE_OPTIONS = [25, 50, 100];
   const [pageSize, setPageSize] = useState(50);
@@ -264,6 +299,77 @@ export default function BookingTable({ onEdit }) {
       toast.error('Error generating FBL: ' + err.message);
     } finally {
       setGeneratingFbl(false);
+    }
+  };
+
+  /** Opens FBL email modal pre-filling subject and body */
+  const handleOpenFblEmailModal = () => {
+    if (!selectedFblFlight) return;
+    const [flightNumber, departureDate] = selectedFblFlight.split('__');
+    const seg = availableFlights.find(f => f.flightNumber === flightNumber && f.departureDate === departureDate);
+    setFblEmailForm({
+      to: '',
+      cc: '',
+      subject: `FBL – ${flightNumber} ${departureDate}${seg ? ` ${seg.segmentOrigin}-${seg.segmentDestination}` : ''}`,
+      body: buildFblEmailBody(flightNumber),
+    });
+    setShowFblEmailModal(true);
+  };
+
+  /** Generates FBL PDF as base64 and sends via Cloudflare Worker */
+  const handleSendFblEmail = async () => {
+    if (!fblEmailForm.to || !selectedFblFlight) return;
+    const [flightNumber, departureDate] = selectedFblFlight.split('__');
+    const seg = availableFlights.find(f => f.flightNumber === flightNumber && f.departureDate === departureDate);
+    if (!seg) return;
+
+    const bookingsForFlight = filtered.filter(b =>
+      (b.flightSegments || []).some(s => s.flightNumber === flightNumber && s.departureDate === departureDate)
+    );
+    if (!bookingsForFlight.length) { toast.error('No bookings found for that flight.'); return; }
+
+    setIsSendingFblEmail(true);
+    try {
+      const flightSchedule = (flightSchedules || []).find(fs =>
+        fs.flightNumber?.toUpperCase() === flightNumber?.toUpperCase()
+      );
+      const result = await generateFblPdf(
+        bookingsForFlight,
+        {
+          flightNumber, departureDate,
+          std:         flightSchedule?.std || seg.std || '—',
+          origin:      seg.segmentOrigin || '',
+          destination: seg.segmentDestination || '',
+        },
+        currentUserProfile?.email?.split('@')[0]?.toUpperCase() || 'ACROSSCARGO',
+        { returnBase64: true }
+      );
+      if (!result?.base64) throw new Error('PDF generation failed');
+
+      const res = await fetch(import.meta.env.VITE_EMAIL_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to:          fblEmailForm.to,
+          cc:          fblEmailForm.cc || undefined,
+          subject:     fblEmailForm.subject,
+          body:        fblEmailForm.body,
+          pdfBase64:   result.base64,
+          pdfFilename: result.filename,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || JSON.stringify(data.error) || 'Email failed');
+
+      toast.success('FBL sent by email — PDF attached!');
+      setShowFblEmailModal(false);
+      setShowFblModal(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Error sending FBL email: ' + err.message);
+    } finally {
+      setIsSendingFblEmail(false);
     }
   };
 
@@ -597,10 +703,10 @@ export default function BookingTable({ onEdit }) {
       {showFblModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={() => setShowFblModal(false)}>
-          <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-xl)', width: '100%', maxWidth: 460, padding: 'var(--space-6)' }}
+          <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-xl)', width: '100%', maxWidth: 480, padding: 'var(--space-6)' }}
             onClick={e => e.stopPropagation()}>
             <h2 style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-gray-900)' }}>
-              Generate Flight Booking List
+              Flight Booking List
             </h2>
             <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
               <label className="form-label">Select flight</label>
@@ -618,11 +724,86 @@ export default function BookingTable({ onEdit }) {
                 return <p style={{ marginTop: 8, fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>{count} booking{count !== 1 ? 's' : ''} will be included</p>;
               })()}
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button className="button button-ghost" onClick={() => setShowFblModal(false)}>Cancel</button>
-              <button className="button button-primary" style={{ background: '#0b1f5b', borderColor: '#0b1f5b' }}
+              <button className="button button-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={handleOpenFblEmailModal} disabled={!selectedFblFlight}>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ width: 15, height: 15 }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                </svg>
+                Send by Email
+              </button>
+              <button className="button button-primary" style={{ background: '#0b1f5b', borderColor: '#0b1f5b', display: 'flex', alignItems: 'center', gap: 6 }}
                 onClick={handleGenerateFbl} disabled={!selectedFblFlight}>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ width: 15, height: 15 }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
                 Generate PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FBL Email Modal */}
+      {showFblEmailModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => !isSendingFblEmail && setShowFblEmailModal(false)}>
+          <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-border)' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '1rem' }}>✉ Send FBL by Email</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', marginTop: 2 }}>
+                  The FBL PDF will be generated and attached automatically
+                </div>
+              </div>
+              <button type="button" className="button button-ghost button-sm"
+                onClick={() => setShowFblEmailModal(false)} style={{ fontSize: '1.2rem', lineHeight: 1 }}>×</button>
+            </div>
+            {/* Body */}
+            <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+              <div className="form-group">
+                <label className="form-label required">To (email address)</label>
+                <input className="form-input" type="email" value={fblEmailForm.to}
+                  onChange={e => setFblEmailForm(f => ({ ...f, to: e.target.value }))}
+                  placeholder="team@airline.com" autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">CC (optional)</label>
+                <input className="form-input" type="email" value={fblEmailForm.cc}
+                  onChange={e => setFblEmailForm(f => ({ ...f, cc: e.target.value }))}
+                  placeholder="copy@example.com" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Subject</label>
+                <input className="form-input" value={fblEmailForm.subject}
+                  onChange={e => setFblEmailForm(f => ({ ...f, subject: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Message</label>
+                <textarea className="form-textarea" rows={6} value={fblEmailForm.body}
+                  onChange={e => setFblEmailForm(f => ({ ...f, body: e.target.value }))} />
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--color-gray-400)', margin: 0 }}>
+                The FBL PDF is generated and attached automatically.
+              </p>
+            </div>
+            {/* Footer */}
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end', padding: 'var(--space-4) var(--space-5)', borderTop: '1px solid var(--color-border)' }}>
+              <button type="button" className="button button-ghost"
+                onClick={() => setShowFblEmailModal(false)} disabled={isSendingFblEmail}>Cancel</button>
+              <button type="button" className="button button-primary"
+                disabled={!fblEmailForm.to || isSendingFblEmail}
+                onClick={handleSendFblEmail}>
+                {isSendingFblEmail ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                    Sending…
+                  </span>
+                ) : '✉ Send FBL Email'}
               </button>
             </div>
           </div>

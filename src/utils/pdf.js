@@ -251,7 +251,7 @@ async function loadLogoBase64() {
  * @param {object} flightInfo - { flightNumber, departureDate, std, origin, destination }
  * @param {string} preparedBy - Name/email of user generating the report
  */
-export const generateFblPdf = async (bookings, flightInfo, preparedBy = 'AcrossCargo') => {
+export const generateFblPdf = async (bookings, flightInfo, preparedBy = 'AcrossCargo', { returnBase64 = false } = {}) => {
   if (!bookings?.length) return;
   const { jsPDF } = window.jspdf;
 
@@ -533,9 +533,12 @@ export const generateFblPdf = async (bookings, flightInfo, preparedBy = 'AcrossC
     pdoc.text(`${p}/${totalPgs}`, R - 30, 15);
   }
 
-  // ── Save with formatted filename ──
+  // ── Save or return ──
   const origDest = `${origin}${destination}`.replace(/-/g, '');
   const filename = `FBL ${flightNumber}_${depDate} RTE ${origDest} VER.${dd2}${mon}${yy} ${timeStr}.pdf`;
+  if (returnBase64) {
+    return { base64: pdoc.output('datauristring').split(',')[1], filename };
+  }
   pdoc.save(filename);
 };
 

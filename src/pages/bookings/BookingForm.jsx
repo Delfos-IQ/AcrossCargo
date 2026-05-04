@@ -307,7 +307,9 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
   const [createdBookingId,  setCreatedBookingId]  = useState(null);
   const [showConfirmModal,  setShowConfirmModal]  = useState(false);
   const [pendingBookingData, setPendingBookingData] = useState(null);
+  const [showRestoreBanner, setShowRestoreBanner] = useState(false);
   const errorRef = React.useRef(null);
+  const DRAFT_KEY = 'acrosscargo_booking_draft';
 
   /* ── Scroll to error automatically ── */
   useEffect(() => {
@@ -315,6 +317,45 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
       errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [formError]);
+
+  /* ── Draft persistence (create mode only) ── */
+  useEffect(() => {
+    if (isEditMode) return;
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Only show banner if there's meaningful data saved
+        const hasMeaningfulData = parsed.awbInputNumber || parsed.selectedAgentProfileId || parsed.origin;
+        if (hasMeaningfulData) setShowRestoreBanner(true);
+      }
+    } catch { /* ignore */ }
+  }, []); // eslint-disable-line
+
+  useEffect(() => {
+    if (isEditMode || createdBookingId) return;
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(form)); } catch { /* ignore */ }
+  }, [form, isEditMode, createdBookingId]);
+
+  const restoreDraft = () => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) setForm(f => ({ ...f, ...JSON.parse(saved) }));
+    } catch { /* ignore */ }
+    setShowRestoreBanner(false);
+  };
+
+  const discardDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    setShowRestoreBanner(false);
+  };
+
+  const clearForm = () => {
+    setForm(INITIAL_FORM);
+    setFormError(null);
+    setCreatedBookingId(null);
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  };
 
   /* ── Derived display values ── */
   const [displayChargeableWeightKg, setDisplayChargeableWeightKg] = useState('0.0');
@@ -786,6 +827,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
       });
 
       setCreatedBookingId(newBookingId);
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       toast.success('Booking created successfully. You can now generate FFR, PDF and send the email.');
 
       // Post-create notifications
@@ -850,6 +892,32 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
 
   return (
     <form onSubmit={handleSubmit}>
+      {/* ── RESTORE DRAFT BANNER ── */}
+      {showRestoreBanner && (
+        <div style={{
+          background: '#eff6ff', border: '1px solid #bfdbfe',
+          borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)',
+          marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap',
+          fontSize: 'var(--font-size-sm)',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#1e40af', fontWeight: 500 }}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" style={{ width: 16, height: 16, flexShrink: 0 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            You have an unsaved draft from a previous session.
+          </span>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <button type="button" className="button button-ghost" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={discardDraft}>
+              Discard
+            </button>
+            <button type="button" className="button button-primary" style={{ padding: '4px 12px', fontSize: '0.8rem' }} onClick={restoreDraft}>
+              Restore draft
+            </button>
+          </div>
+        </div>
+      )}
+
       {formError && (
         <div ref={errorRef} style={{
           background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger-border)',
@@ -1497,8 +1565,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
             {/* Left: Clear / Cancel */}
             <div>
               {!isEditMode && (
-                <button type="button" className="button button-ghost"
-                  onClick={() => { setForm(INITIAL_FORM); setFormError(null); setCreatedBookingId(null); }}>
+                <button type="button" className="button button-ghost" onClick={clearForm}>
                   Clear form
                 </button>
               )}

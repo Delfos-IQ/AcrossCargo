@@ -5,7 +5,7 @@ import { useAppContext } from '../../context/AppContext.jsx';
 import { useScopedBookings } from '../../hooks/useScopedBookings.js';
 import { formatDate, toYyyyMmDd } from '../../utils/dates.js';
 import { generateFFRMessage } from '../../utils/ffr.js';
-import { generateBookingConfirmationPdf } from '../../utils/pdf.js';
+import { generateBookingConfirmationPdf, generateFblPdf } from '../../utils/pdf.js';
 // exportBookingsExcel uses ExcelJS (CommonJS) — loaded lazily on demand
 import toast from 'react-hot-toast';
 
@@ -112,7 +112,7 @@ const DATE_PRESETS = [
 
 /* ── BookingTable ──────────────────────────────────── */
 export default function BookingTable({ onEdit }) {
-  const { bookings, agentProfiles, flightSchedules, iataAirportCodes, isAdmin, myAgentId } = useAppContext();
+  const { bookings, agentProfiles, flightSchedules, iataAirportCodes, isAdmin, myAgentId, currentUserProfile } = useAppContext();
   const [search, setSearch] = useState('');
   const [filterAgent, setFilterAgent] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -123,6 +123,9 @@ export default function BookingTable({ onEdit }) {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showFblModal, setShowFblModal] = useState(false);
+  const [generatingFbl, setGeneratingFbl] = useState(false);
+  const [selectedFblFlight, setSelectedFblFlight] = useState('');
 
   const PAGE_SIZE_OPTIONS = [25, 50, 100];
   const [pageSize, setPageSize] = useState(50);
@@ -215,6 +218,53 @@ export default function BookingTable({ onEdit }) {
         {status || '—'}
       </span>
     );
+  };
+
+  // Extract unique flight segments from filtered bookings for FBL selector
+  const availableFlights = useMemo(() => {
+    const map = {};
+    filtered.forEach(b => {
+      (b.flightSegments || []).forEach(seg => {
+        if (!seg.flightNumber || !seg.departureDate) return;
+        const key = `${seg.flightNumber}__${seg.departureDate}`;
+        if (!map[key]) map[key] = { ...seg, key };
+      });
+    });
+    return Object.values(map).sort((a, b) => {
+      if (a.departureDate !== b.departureDate) return a.departureDate.localeCompare(b.departureDate);
+      return a.flightNumber.localeCompare(b.flightNumber);
+    });
+  }, [filtered]);
+
+  const handleGenerateFbl = async () => {
+    if (!selectedFblFlight) return;
+    const [flightNumber, departureDate] = selectedFblFlight.split('__');
+    const seg = availableFlights.find(f => f.flightNumber === flightNumber && f.departureDate === departureDate);
+    if (!seg) return;
+
+    const bookingsForFlight = filtered.filter(b =>
+      (b.flightSegments || []).some(s => s.flightNumber === flightNumber && s.departureDate === departureDate)
+    );
+    if (!bookingsForFlight.length) { toast.error('No bookings found for that flight.'); return; }
+
+    setGeneratingFbl(true);
+    setShowFblModal(false);
+    try {
+      const flightSchedule = (flightSchedules || []).find(fs =>
+        fs.flightNumber?.toUpperCase() === flightNumber?.toUpperCase()
+      );
+      await generateFblPdf(bookingsForFlight, {
+        flightNumber,
+        departureDate,
+        std: flightSchedule?.std || seg.std || '—',
+        origin: seg.segmentOrigin || '',
+        destination: seg.segmentDestination || '',
+      }, currentUserProfile?.email?.split('@')[0]?.toUpperCase() || 'ACROSSCARGO');
+    } catch (err) {
+      toast.error('Error generating FBL: ' + err.message);
+    } finally {
+      setGeneratingFbl(false);
+    }
   };
 
   const handleDelete = async (booking) => {
@@ -317,7 +367,28 @@ export default function BookingTable({ onEdit }) {
             </button>
           )}
 
-          {/* Export */}
+          {/* Generate FBL */}
+          <button
+            className="button button-secondary"
+            style={{
+              alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+              ...(availableFlights.length === 0 ? { opacity: 0.45, cursor: 'not-allowed' } : { background: '#0b1f5b', color: '#fff', borderColor: '#0b1f5b' }),
+            }}
+            onClick={() => { setSelectedFblFlight(availableFlights[0]?.key || ''); setShowFblModal(true); }}
+            disabled={availableFlights.length === 0 || generatingFbl}
+            title="Generate Flight Booking List PDF"
+          >
+            {generatingFbl ? (
+              <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ width: 15, height: 15 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+              </svg>
+            )}
+            Generate FBL
+          </button>
+
+          {/* Export Excel */}
           <button
             className="button button-secondary"
             style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
@@ -521,6 +592,42 @@ export default function BookingTable({ onEdit }) {
 
       {/* FFR Modal */}
       {ffrBooking && <FfrModal booking={ffrBooking} onClose={() => setFfrBooking(null)} />}
+
+      {/* FBL Modal */}
+      {showFblModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => setShowFblModal(false)}>
+          <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-xl)', width: '100%', maxWidth: 460, padding: 'var(--space-6)' }}
+            onClick={e => e.stopPropagation()}>
+            <h2 style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-gray-900)' }}>
+              Generate Flight Booking List
+            </h2>
+            <div className="form-group" style={{ marginBottom: 'var(--space-5)' }}>
+              <label className="form-label">Select flight</label>
+              <select className="form-select" value={selectedFblFlight}
+                onChange={e => setSelectedFblFlight(e.target.value)}>
+                {availableFlights.map(f => (
+                  <option key={f.key} value={f.key}>
+                    {f.flightNumber} · {f.departureDate} · {f.segmentOrigin}-{f.segmentDestination}
+                  </option>
+                ))}
+              </select>
+              {selectedFblFlight && (() => {
+                const [fn, dd] = selectedFblFlight.split('__');
+                const count = filtered.filter(b => (b.flightSegments || []).some(s => s.flightNumber === fn && s.departureDate === dd)).length;
+                return <p style={{ marginTop: 8, fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-500)' }}>{count} booking{count !== 1 ? 's' : ''} will be included</p>;
+              })()}
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+              <button className="button button-ghost" onClick={() => setShowFblModal(false)}>Cancel</button>
+              <button className="button button-primary" style={{ background: '#0b1f5b', borderColor: '#0b1f5b' }}
+                onClick={handleGenerateFbl} disabled={!selectedFblFlight}>
+                Generate PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

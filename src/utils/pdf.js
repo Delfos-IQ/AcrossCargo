@@ -224,6 +224,322 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
 };
 
 /* ──────────────────────────────────────────────────────────────
+   FLIGHT BOOKING LIST (FBL) PDF
+─────────────────────────────────────────────────────────────── */
+
+/** Convert /logo.svg → base64 PNG via canvas (browser only) */
+async function loadLogoBase64() {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200; canvas.height = 240;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 200, 240);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(null);
+      img.src = '/logo.svg';
+    } catch { resolve(null); }
+  });
+}
+
+/**
+ * Generate Flight Booking List PDF.
+ * @param {Array}  bookings   - Array of booking objects for this flight
+ * @param {object} flightInfo - { flightNumber, departureDate, std, origin, destination }
+ * @param {string} preparedBy - Name/email of user generating the report
+ */
+export const generateFblPdf = async (bookings, flightInfo, preparedBy = 'AcrossCargo') => {
+  if (!bookings?.length) return;
+  const { jsPDF } = window.jspdf;
+
+  const { flightNumber, departureDate, std, origin, destination } = flightInfo;
+
+  // Sort bookings by origin then by AWB
+  const sorted = [...bookings].sort((a, b) => {
+    const segA = (a.flightSegments || []).find(s => s.flightNumber === flightNumber && s.departureDate === departureDate);
+    const segB = (b.flightSegments || []).find(s => s.flightNumber === flightNumber && s.departureDate === departureDate);
+    const oA = segA?.segmentOrigin || '';
+    const oB = segB?.segmentOrigin || '';
+    if (oA !== oB) return oA.localeCompare(oB);
+    return (a.awb || '').localeCompare(b.awb || '');
+  });
+
+  // Load logo
+  const logoBase64 = await loadLogoBase64();
+
+  // Formatted date/time for header and filename
+  const now = new Date();
+  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const dd2 = String(now.getDate()).padStart(2,'0');
+  const mon = MONTHS[now.getMonth()];
+  const yy  = String(now.getFullYear()).slice(-2);
+  const timeStr = `${hh}${mm}LT`;
+  const dateStrHeader = `${dd2}-${mon}-${now.getFullYear()} ${hh}:${mm}`;
+
+  // Departure date formatted as DDMMM
+  const depDate = formatDateDDMMM(departureDate); // e.g. "01JUL"
+
+  // Build jsPDF document
+  const pdoc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+  const PW = pdoc.internal.pageSize.getWidth();
+  const PH = pdoc.internal.pageSize.getHeight();
+  const L = 14, R = PW - 14;
+  const totalPages = pdoc.internal.pages.length; // will update after
+
+  // ── Header drawing function (called on each new page) ──
+  const drawHeader = (pageNum) => {
+    // Logo
+    if (logoBase64) {
+      pdoc.addImage(logoBase64, 'PNG', L, 4, 18, 22);
+    } else {
+      pdoc.setFont('helvetica', 'bold');
+      pdoc.setFontSize(10);
+      pdoc.setTextColor(212, 74, 18);
+      pdoc.text('ACROSSCARGO', L, 14);
+    }
+    // Company name next to logo
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setFontSize(7);
+    pdoc.setTextColor(27, 39, 102);
+    pdoc.text('ACROSSCARGO GSSA', L + 20, 10);
+    pdoc.setFont('helvetica', 'normal');
+    pdoc.setTextColor(100, 100, 100);
+    pdoc.text('General Sales & Service Agent', L + 20, 14);
+
+    // Separator line
+    pdoc.setDrawColor(212, 74, 18);
+    pdoc.setLineWidth(0.8);
+    pdoc.line(L, 27, R, 27);
+
+    // Right side: date, page, prepared by
+    pdoc.setFont('helvetica', 'normal');
+    pdoc.setFontSize(8);
+    pdoc.setTextColor(60, 60, 60);
+    pdoc.text(`Date:`, R - 60, 10);
+    pdoc.text(`Page :`, R - 60, 15);
+    pdoc.text(`Prepared by:`, R - 60, 20);
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.text(dateStrHeader, R - 30, 10);
+    pdoc.text(`${pageNum}/TOTAL`, R - 30, 15); // will be replaced
+    pdoc.setFont('helvetica', 'normal');
+    pdoc.text(preparedBy.toUpperCase(), R - 30, 20);
+
+    // Title
+    let y = 34;
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setFontSize(13);
+    pdoc.setTextColor(17, 24, 39);
+    pdoc.text('FLIGHT BOOKING LIST', L, y);
+
+    // Flight info line
+    y += 7;
+    pdoc.setFontSize(9);
+    pdoc.setFont('helvetica', 'normal');
+    pdoc.setTextColor(60, 60, 60);
+    const depDateFull = departureDate ? (() => {
+      const [yr, mo, dy] = departureDate.split('-');
+      return `${dy}-${MONTHS[parseInt(mo)-1]}-${yr}`;
+    })() : '—';
+    pdoc.text(`${flightNumber} / ${depDateFull}`, L, y);
+    pdoc.text(std || '—', L + 55, y);
+    pdoc.text(`${origin}-${destination}`, L + 75, y);
+
+    return y + 4; // return y after header
+  };
+
+  // ── Column definitions ──
+  const COLS = {
+    awb:   { x: L,      w: 32, label: 'AWB NO.' },
+    pcs:   { x: L+32,   w: 12, label: 'PCS' },
+    wgt:   { x: L+44,   w: 18, label: 'WEIGHT' },
+    vol:   { x: L+62,   w: 13, label: 'VOL.' },
+    desc:  { x: L+75,   w: 34, label: 'DESCRIPTION' },
+    other: { x: L+109,  w: 46, label: 'OTHER INFO' },
+    shc:   { x: L+155,  w: 14, label: 'SHC' },
+    prio:  { x: L+169,  w: 13, label: 'PRIORITY' },
+  };
+
+  const drawColumnHeaders = (y) => {
+    pdoc.setFontSize(7.5);
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setTextColor(17, 24, 39);
+    pdoc.setDrawColor(17, 24, 39);
+    pdoc.setLineWidth(0.4);
+    pdoc.line(L, y + 1, R, y + 1);
+    Object.values(COLS).forEach(col => {
+      pdoc.text(col.label, col.x, y);
+    });
+    y += 2;
+    pdoc.line(L, y, R, y);
+    return y + 3;
+  };
+
+  // ── Start first page ──
+  let currentPage = 1;
+  let y = drawHeader(currentPage);
+  y = drawColumnHeaders(y);
+
+  const LINE_H = 4.2;
+  const checkPage = (needed = 8) => {
+    if (y + needed > PH - 16) {
+      pdoc.addPage();
+      currentPage++;
+      y = drawHeader(currentPage);
+      y = drawColumnHeaders(y);
+    }
+  };
+
+  // ── Group by destination for subtotals ──
+  const destGroups = {};
+  sorted.forEach(b => {
+    const seg = (b.flightSegments || []).find(s => s.flightNumber === flightNumber && s.departureDate === departureDate);
+    const dest = seg?.segmentDestination || destination || '—';
+    if (!destGroups[dest]) destGroups[dest] = [];
+    destGroups[dest].push({ booking: b, seg });
+  });
+
+  let grandPcs = 0, grandWgt = 0, grandVol = 0, grandAwbs = 0;
+
+  // ── Render rows ──
+  Object.entries(destGroups).forEach(([dest, entries]) => {
+    // Destination header
+    checkPage(6);
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setFontSize(7.5);
+    pdoc.setTextColor(17, 24, 39);
+    pdoc.text(dest, COLS.awb.x, y);
+    y += LINE_H;
+
+    let destPcs = 0, destWgt = 0, destVol = 0;
+
+    entries.forEach(({ booking: b }) => {
+      const pcs  = parseInt(b.pieces) || 0;
+      const wgt  = parseFloat(b.weightKg) || 0;
+      const vol  = parseFloat(b.volumeM3) || 0;
+      destPcs += pcs; destWgt += wgt; destVol += vol;
+      grandPcs += pcs; grandWgt += wgt; grandVol += vol;
+      grandAwbs++;
+
+      // Dimension lines estimate height
+      const dimLines = (b.dimensionLines || []).filter(d => d.pieces && d.length);
+      const handlingLines = b.handlingInformation?.trim() ? 1 : 0;
+      const osiLines = b.osiGhaText?.trim() ? 1 : 0;
+      const rowHeight = LINE_H + dimLines.length * (LINE_H - 1) + handlingLines * (LINE_H - 1) + osiLines * (LINE_H - 1);
+      checkPage(rowHeight + 2);
+
+      // Main row
+      pdoc.setFont('helvetica', 'normal');
+      pdoc.setFontSize(7.5);
+      pdoc.setTextColor(17, 24, 39);
+      pdoc.text(b.awb || '—',                      COLS.awb.x,  y);
+      pdoc.text(String(pcs),                         COLS.pcs.x,  y, { align: 'left' });
+      pdoc.text(wgt.toFixed(2),                      COLS.wgt.x,  y);
+      pdoc.text(vol.toFixed(2),                      COLS.vol.x,  y);
+
+      // Description (truncated)
+      const descText = (b.natureOfGoods || '—').substring(0, 18);
+      pdoc.text(descText,                            COLS.desc.x, y);
+
+      // Other info: agent + route
+      const seg = (b.flightSegments || []).find(s => s.flightNumber === flightNumber && s.departureDate === departureDate);
+      const route = seg ? `${seg.segmentOrigin || ''} ${seg.segmentOrigin || ''}-${seg.segmentDestination || ''}` : '';
+      const otherText = (b.agent_details_name || '').substring(0, 8) + ' ' + route;
+      pdoc.text(otherText.trim().substring(0, 22),   COLS.other.x, y);
+
+      pdoc.text(b.selectedShcCode || '',             COLS.shc.x,  y);
+      pdoc.text(b.bookingStatus || 'KK',             COLS.prio.x, y);
+
+      y += LINE_H - 0.5;
+
+      // Dimension lines
+      if (dimLines.length > 0) {
+        pdoc.setFontSize(6.5);
+        pdoc.setTextColor(80, 80, 80);
+        dimLines.forEach(d => {
+          pdoc.text(`Dims: ${d.pieces} pc / ${d.length} x ${d.width} x ${d.height} CMT`, COLS.other.x, y);
+          y += LINE_H - 1.5;
+        });
+      }
+
+      // Handling / OSI notes
+      if (b.handlingInformation?.trim()) {
+        pdoc.setFontSize(6.5);
+        pdoc.setFont('helvetica', 'italic');
+        pdoc.setTextColor(60, 60, 60);
+        const hLines = pdoc.splitTextToSize(b.handlingInformation.trim(), R - COLS.awb.x);
+        pdoc.text(hLines[0], COLS.awb.x, y);
+        y += LINE_H - 1;
+        pdoc.setFont('helvetica', 'normal');
+        pdoc.setTextColor(17, 24, 39);
+      }
+      if (b.osiGhaText?.trim()) {
+        pdoc.setFontSize(6.5);
+        pdoc.setFont('helvetica', 'bold');
+        pdoc.setTextColor(80, 60, 0);
+        const oLines = pdoc.splitTextToSize(b.osiGhaText.trim(), R - COLS.awb.x);
+        pdoc.text(oLines[0], COLS.awb.x, y);
+        y += LINE_H - 1;
+        pdoc.setFont('helvetica', 'normal');
+        pdoc.setTextColor(17, 24, 39);
+      }
+
+      y += 0.5;
+    });
+
+    // Destination subtotal
+    checkPage(8);
+    pdoc.setDrawColor(17, 24, 39);
+    pdoc.setLineWidth(0.3);
+    pdoc.line(L, y, R, y);
+    y += 3;
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setFontSize(7.5);
+    pdoc.text(`${dest} SubTotal:`,          COLS.awb.x,  y);
+    pdoc.text(String(destPcs),              COLS.pcs.x,  y);
+    pdoc.text(destWgt.toFixed(2),           COLS.wgt.x,  y);
+    pdoc.text(destVol.toFixed(2),           COLS.vol.x,  y);
+    y += LINE_H + 2;
+  });
+
+  // ── Grand total page ──
+  checkPage(20);
+  pdoc.setDrawColor(17, 24, 39);
+  pdoc.setLineWidth(0.5);
+  pdoc.line(L, y, R, y);
+  y += 4;
+  pdoc.setFont('helvetica', 'bold');
+  pdoc.setFontSize(8);
+  pdoc.text(`${destination} Total:`,        COLS.awb.x,  y);
+  pdoc.text(String(grandPcs),              COLS.pcs.x,  y);
+  pdoc.text(grandWgt.toFixed(2),           COLS.wgt.x,  y);
+  pdoc.text(grandVol.toFixed(2),           COLS.vol.x,  y);
+  pdoc.text(`Total No. of AWBs:   ${grandAwbs}`, COLS.other.x, y);
+
+  // ── Fix page numbers (replace TOTAL with real count) ──
+  const totalPgs = pdoc.internal.pages.length - 1;
+  for (let p = 1; p <= totalPgs; p++) {
+    pdoc.setPage(p);
+    // Overwrite the placeholder with white rect, then write correct value
+    pdoc.setFillColor(255, 255, 255);
+    pdoc.rect(R - 30, 11, 22, 5, 'F');
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setFontSize(8);
+    pdoc.setTextColor(60, 60, 60);
+    pdoc.text(`${p}/${totalPgs}`, R - 30, 15);
+  }
+
+  // ── Save with formatted filename ──
+  const origDest = `${origin}${destination}`.replace(/-/g, '');
+  const filename = `FBL ${flightNumber}_${depDate} RTE ${origDest} VER.${dd2}${mon}${yy} ${timeStr}.pdf`;
+  pdoc.save(filename);
+};
+
+/* ──────────────────────────────────────────────────────────────
    CARGO SALES REPORT PDF  (landscape A4)
 ─────────────────────────────────────────────────────────────── */
 export const generateCargoSalesReportPdf = (reportBookings, dateFrom, dateTo, agentProfiles = [], iataAirportCodes = [], companyInfo = {}) => {

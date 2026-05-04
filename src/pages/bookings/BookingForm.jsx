@@ -225,6 +225,17 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
   const [showEmailModal,  setShowEmailModal]  = useState(false);
   const [emailForm,       setEmailForm]       = useState({ to: '', cc: '', subject: '', body: '' });
   const [isSendingEmail,  setIsSendingEmail]  = useState(false);
+  const [createdBookingId,  setCreatedBookingId]  = useState(null);
+  const [showConfirmModal,  setShowConfirmModal]  = useState(false);
+  const [pendingBookingData, setPendingBookingData] = useState(null);
+  const errorRef = React.useRef(null);
+
+  /* ── Scroll to error automatically ── */
+  useEffect(() => {
+    if (formError && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [formError]);
 
   /* ── Derived display values ── */
   const [displayChargeableWeightKg, setDisplayChargeableWeightKg] = useState('0.0');
@@ -620,6 +631,13 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
       }
     }
 
+    // ── CREATE MODE: show confirmation modal first ──
+    if (!isEditMode) {
+      setPendingBookingData(data);
+      setShowConfirmModal(true);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // ── EDIT MODE: simple updateDoc ──
@@ -638,7 +656,22 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
         return;
       }
 
-      // ── CREATE MODE: transaction with AWB stock lock ──
+    } catch (err) {
+      console.error(err);
+      setFormError(err.message);
+      toast.error('Error updating booking.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /* ── Confirm and execute booking creation ── */
+  const handleConfirmCreate = async () => {
+    const data = pendingBookingData;
+    if (!data) return;
+    setShowConfirmModal(false);
+    setIsSubmitting(true);
+    try {
       data.createdAt = serverTimestamp();
       data.createdBy = currentUserProfile?.email || 'unknown';
 
@@ -658,6 +691,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
       });
       if (!allocId) throw new Error('No valid AWB allocation found for this agent.');
 
+      let newBookingId = null;
       await runTransaction(db, async (tx) => {
         const awbUsageRef = doc(db, 'awbUsage', data.awb);
         const awbUsageDoc = await tx.get(awbUsageRef);
@@ -665,39 +699,37 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
         const updatedUsed = [...currentUsedAwbs];
         if (!updatedUsed.includes(data.awbInputNumber)) updatedUsed.push(data.awbInputNumber);
         const newRef = doc(collection(db, 'bookings'));
+        newBookingId = newRef.id;
         tx.set(newRef, data);
         tx.update(doc(db, 'awbStockAllocations', allocId), { usedAwbs: updatedUsed });
-        tx.set(awbUsageRef, { bookingId: newRef.id });
+        tx.set(doc(db, 'awbUsage', data.awb), { bookingId: newRef.id });
       });
 
-      toast.success('Booking created successfully.');
+      setCreatedBookingId(newBookingId);
+      toast.success('Booking created successfully. You can now generate FFR, PDF and send the email.');
 
-      // ── Post-create notifications (fire-and-forget) ──
+      // Post-create notifications
       const agentProfile = agentProfiles?.find(p => p.id === data.selectedAgentProfileId);
       notifyBookingCreated(data, agentProfile);
 
-      // Check AWB stock level for this agent — alert if < 25% remaining
       const agentAllocs = (awbStockAllocations || []).filter(a => a.agentProfileId === data.selectedAgentProfileId);
       for (const alloc of agentAllocs) {
-        const { calculateAwbCount } = await import('../../utils/awb.js');
-        const total    = calculateAwbCount(alloc.startNumber, alloc.endNumber);
-        const used     = (alloc.usedAwbs || []).length + 1; // +1 for the one just created
-        const avail    = total - used;
+        const { calculateAwbCount: calcCount } = await import('../../utils/awb.js');
+        const total = calcCount(alloc.startNumber, alloc.endNumber);
+        const used  = (alloc.usedAwbs || []).length + 1;
+        const avail = total - used;
         if (total > 0 && avail / total < 0.25) {
           notifyAwbStockAlert(alloc, agentProfile, avail, total);
-          break; // alert once per booking
+          break;
         }
       }
-
-      setForm(INITIAL_FORM);
-      setFormError(null);
-      onSuccess?.();
     } catch (err) {
       console.error(err);
       setFormError(err.message);
-      toast.error(isEditMode ? 'Error updating booking.' : 'Error creating booking.');
+      toast.error('Error creating booking.');
     } finally {
       setIsSubmitting(false);
+      setPendingBookingData(null);
     }
   };
 
@@ -739,12 +771,15 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
   return (
     <form onSubmit={handleSubmit}>
       {formError && (
-        <div style={{
+        <div ref={errorRef} style={{
           background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger-border)',
           color: 'var(--color-danger-text)', borderRadius: 'var(--radius-md)',
           padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-4)',
-          fontSize: 'var(--font-size-sm)',
+          fontSize: 'var(--font-size-sm)', display: 'flex', alignItems: 'center', gap: 8,
         }}>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" style={{ width: 18, height: 18, flexShrink: 0 }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
           {formError}
         </div>
       )}
@@ -1351,38 +1386,110 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
       </div>
 
       {/* ── SUBMIT ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', paddingBottom: 'var(--space-8)', flexWrap: 'wrap' }}>
-        {!isEditMode && (
-          <button type="button" className="button button-secondary" onClick={() => { setForm(INITIAL_FORM); setFormError(null); }}>
-            Clear form
-          </button>
-        )}
-        {isEditMode && (
-          <button type="button" className="button button-ghost" onClick={() => onSuccess?.()}>
-            Cancel
-          </button>
-        )}
-        <button type="button" className="button button-secondary" onClick={() => setShowFfrModal(true)}
-          style={{ background: '#0b1f5b', color: '#fff', borderColor: '#0b1f5b' }}>
-          📋 Generate FFR
-        </button>
-        <button type="button" className="button button-secondary" onClick={handlePreviewPdf}
-          style={{ background: '#1c9246', color: '#fff', borderColor: '#1c9246' }}>
-          🖨 Preview / Print PDF
-        </button>
-        <button type="button" className="button button-secondary" onClick={handleOpenEmailModal}
-          style={{ background: '#138756', color: '#fff', borderColor: '#138756' }}>
-          ✉ Send PDF by Email
-        </button>
-        <button type="submit" className="button button-primary button-lg" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-              Saving…
-            </span>
-          ) : isEditMode ? 'Save Changes' : 'Create Booking'}
-        </button>
-      </div>
+      {(() => {
+        const docsEnabled = isEditMode || !!createdBookingId;
+        const disabledStyle = { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' };
+        return (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', paddingBottom: 'var(--space-8)', flexWrap: 'wrap' }}>
+            {/* Left: Clear / Cancel */}
+            <div>
+              {!isEditMode && (
+                <button type="button" className="button button-ghost"
+                  onClick={() => { setForm(INITIAL_FORM); setFormError(null); setCreatedBookingId(null); }}>
+                  Clear form
+                </button>
+              )}
+              {isEditMode && (
+                <button type="button" className="button button-ghost" onClick={() => onSuccess?.()}>
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            {/* Right: action buttons */}
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Create / Save */}
+              {!createdBookingId && (
+                <button type="submit" className="button button-primary button-lg" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                      Saving…
+                    </span>
+                  ) : isEditMode ? 'Save Changes' : 'Create Booking'}
+                </button>
+              )}
+              {createdBookingId && !isEditMode && (
+                <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-success, #16a34a)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" style={{ width: 16, height: 16 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                  Booking created
+                </span>
+              )}
+
+              {/* FFR */}
+              <button type="button" onClick={() => setShowFfrModal(true)}
+                className="button button-secondary"
+                style={{ background: docsEnabled ? '#0b1f5b' : undefined, color: docsEnabled ? '#fff' : undefined, borderColor: docsEnabled ? '#0b1f5b' : undefined, ...(docsEnabled ? {} : disabledStyle) }}
+                disabled={!docsEnabled}>
+                📋 Generate FFR
+              </button>
+
+              {/* Preview PDF */}
+              <button type="button" onClick={handlePreviewPdf}
+                className="button button-secondary"
+                style={{ background: docsEnabled ? '#1c9246' : undefined, color: docsEnabled ? '#fff' : undefined, borderColor: docsEnabled ? '#1c9246' : undefined, ...(docsEnabled ? {} : disabledStyle) }}
+                disabled={!docsEnabled}>
+                🖨 Preview / Print PDF
+              </button>
+
+              {/* Send email */}
+              <button type="button" onClick={handleOpenEmailModal}
+                className="button button-secondary"
+                style={{ background: docsEnabled ? '#138756' : undefined, color: docsEnabled ? '#fff' : undefined, borderColor: docsEnabled ? '#138756' : undefined, ...(docsEnabled ? {} : disabledStyle) }}
+                disabled={!docsEnabled}>
+                ✉ Send PDF by Email
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── CONFIRM CREATE MODAL ── */}
+      {showConfirmModal && pendingBookingData && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+          <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-xl)', width: '100%', maxWidth: 480, padding: 'var(--space-6)' }}>
+            <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, marginBottom: 'var(--space-4)', color: 'var(--color-gray-900)' }}>
+              Confirm booking creation
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+              {[
+                ['AWB', `${pendingBookingData.awbInputPrefix}-${pendingBookingData.awbInputNumber}`],
+                ['Agent', pendingBookingData.agent_details_name || '—'],
+                ['Route', `${pendingBookingData.origin || '—'} → ${pendingBookingData.destination || '—'}`],
+                ['Pieces / Weight', `${pendingBookingData.pieces || '—'} pcs / ${pendingBookingData.weightKg || '—'} kg`],
+                ['Chargeable weight', `${pendingBookingData.chargeableWeightKg || '—'} kg`],
+                ['Total charges', `${pendingBookingData.currency} ${pendingBookingData.totalCalculatedCharges}`],
+                ['Status', pendingBookingData.bookingStatus || '—'],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--font-size-sm)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-2)' }}>
+                  <span style={{ color: 'var(--color-gray-500)' }}>{label}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--color-gray-900)' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+              <button type="button" className="button button-ghost" onClick={() => { setShowConfirmModal(false); setPendingBookingData(null); }}>
+                Cancel
+              </button>
+              <button type="button" className="button button-primary" onClick={handleConfirmCreate}>
+                Confirm & Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── FFR MODAL ── */}
       {showFfrModal && (

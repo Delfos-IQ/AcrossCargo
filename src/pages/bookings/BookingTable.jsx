@@ -144,7 +144,7 @@ const DATE_PRESETS = [
 
 /* ── BookingTable ──────────────────────────────────── */
 export default function BookingTable({ onEdit }) {
-  const { bookings, agentProfiles, flightSchedules, iataAirportCodes, isAdmin, myAgentId, currentUserProfile } = useAppContext();
+  const { bookings, agentProfiles, flightSchedules, iataAirportCodes, isAdmin, myAgentId, currentUserProfile, ghaProfiles } = useAppContext();
   const [search, setSearch] = useState('');
   const [filterAgent, setFilterAgent] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -302,13 +302,26 @@ export default function BookingTable({ onEdit }) {
     }
   };
 
-  /** Opens FBL email modal pre-filling subject and body */
+  /** Opens FBL email modal pre-filling subject, body, and GHA email if available */
   const handleOpenFblEmailModal = () => {
     if (!selectedFblFlight) return;
     const [flightNumber, departureDate] = selectedFblFlight.split('__');
     const seg = availableFlights.find(f => f.flightNumber === flightNumber && f.departureDate === departureDate);
+
+    // Find the most frequently used GHA among bookings for this flight
+    const bookingsForFlight = filtered.filter(b =>
+      (b.flightSegments || []).some(s => s.flightNumber === flightNumber && s.departureDate === departureDate)
+    );
+    const ghaIdCounts = {};
+    bookingsForFlight.forEach(b => {
+      if (b.selectedGhaId) ghaIdCounts[b.selectedGhaId] = (ghaIdCounts[b.selectedGhaId] || 0) + 1;
+    });
+    const topGhaId = Object.entries(ghaIdCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const gha = topGhaId ? (ghaProfiles || []).find(g => g.id === topGhaId) : null;
+    const ghaEmail = gha?.email || '';
+
     setFblEmailForm({
-      to: '',
+      to: ghaEmail,
       cc: '',
       subject: `FBL – ${flightNumber} ${departureDate}${seg ? ` ${seg.segmentOrigin}-${seg.segmentDestination}` : ''}`,
       body: buildFblEmailBody(flightNumber),
@@ -766,7 +779,14 @@ export default function BookingTable({ onEdit }) {
             {/* Body */}
             <div style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div className="form-group">
-                <label className="form-label required">To (email address)</label>
+                <label className="form-label required" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  To (email address)
+                  {fblEmailForm.to && (
+                    <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#065f46', background: '#d1fae5', padding: '1px 7px', borderRadius: 10 }}>
+                      GHA auto-detected
+                    </span>
+                  )}
+                </label>
                 <input className="form-input" type="email" value={fblEmailForm.to}
                   onChange={e => setFblEmailForm(f => ({ ...f, to: e.target.value }))}
                   placeholder="team@airline.com" autoFocus />

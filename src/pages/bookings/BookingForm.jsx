@@ -135,6 +135,84 @@ function AgentSearchSelect({ agents = [], value, onChange, disabled }) {
   );
 }
 
+/* ─── Searchable GHA dropdown ─── */
+function GhaSearchSelect({ ghas = [], value, onChange, disabled }) {
+  const selected = ghas.find(g => g.id === value);
+  const [query, setQuery] = useState('');
+  const [open, setOpen]   = useState(false);
+  const ref = React.useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const sorted = useMemo(() =>
+    [...ghas].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+  [ghas]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? sorted.filter(g => g.name?.toLowerCase().includes(q) || g.shortName?.toLowerCase().includes(q) || g.location?.toLowerCase().includes(q)) : sorted;
+  }, [sorted, query]);
+
+  const handleSelect = (gha) => { onChange(gha.id); setQuery(''); setOpen(false); };
+  const handleClear  = (e)   => { e.stopPropagation(); onChange(''); setQuery(''); setOpen(false); };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div
+        style={{
+          display: 'flex', alignItems: 'center',
+          border: `1px solid ${open ? 'var(--color-primary, #1e3a8a)' : 'var(--color-border)'}`,
+          borderRadius: 'var(--radius-md)', background: disabled ? 'var(--color-gray-50)' : 'var(--color-surface)',
+          boxShadow: open ? '0 0 0 2px rgba(30,58,138,0.15)' : 'none',
+          transition: 'border-color 150ms, box-shadow 150ms',
+          cursor: disabled ? 'not-allowed' : 'text', overflow: 'hidden',
+        }}
+        onClick={() => !disabled && setOpen(true)}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"
+          style={{ width: 15, height: 15, marginLeft: 10, flexShrink: 0, color: 'var(--color-gray-400)' }}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+        </svg>
+        <input
+          type="text" disabled={disabled}
+          placeholder={selected ? selected.name : 'Search GHA…'}
+          value={open ? query : (selected ? `${selected.name}${selected.location ? ` — ${selected.location}` : ''}` : '')}
+          style={{ flex: 1, border: 'none', outline: 'none', padding: '8px 8px', fontSize: 'var(--font-size-sm)', background: 'transparent', color: open ? 'var(--color-gray-900)' : (selected ? 'var(--color-gray-900)' : 'var(--color-gray-400)'), cursor: disabled ? 'not-allowed' : 'text' }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => !disabled && setOpen(true)}
+        />
+        {selected && !disabled && (
+          <button type="button" onClick={handleClear}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 8px', color: 'var(--color-gray-400)', display: 'flex', alignItems: 'center' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" style={{ width: 14, height: 14 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', maxHeight: 220, overflowY: 'auto', marginTop: 4 }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: '10px 14px', fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-400)' }}>No GHAs found</div>
+          ) : filtered.map(g => (
+            <div key={g.id} onClick={() => handleSelect(g)}
+              style={{ padding: '8px 14px', cursor: 'pointer', fontSize: 'var(--font-size-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--color-gray-50)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <span style={{ fontWeight: 500 }}>{g.name}</span>
+              <span style={{ color: 'var(--color-gray-400)', fontSize: '0.75rem' }}>{g.shortName}{g.location ? ` · ${g.location}` : ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Initial form state ─── */
 const INITIAL_FORM = {
   awbInputPrefix: '', awbInputNumber: '',
@@ -153,7 +231,7 @@ const INITIAL_FORM = {
   currency: 'EUR', ratePerKg: '0.00', isRateOverridden: false,
   otherCharges: [],
   paymentType: 'PPD', ffrReference: '', handlingInformation: '',
-  osiGhaText: 'GHA: ', ffrRemarks: '', bookingStatus: 'NN', isFlown: false,
+  osiGhaText: '', selectedGhaId: '', ffrRemarks: '', bookingStatus: 'NN', isFlown: false,
   // Cost & profit
   buyRatePerKg: '', buyCurrency: 'USD', exchangeRateUsdEur: '',
 };
@@ -164,7 +242,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
   const {
     currentUserProfile, agentProfiles, shipperProfiles, consigneeProfiles,
     flightSchedules, iataAirportCodes, awbStockAllocations, rateTableEntries, bookings,
-    isAdmin, myAgentId, globalSettings,
+    isAdmin, myAgentId, globalSettings, ghaProfiles,
   } = useAppContext();
 
   // Build initial state from editing booking if provided
@@ -208,7 +286,8 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
     paymentType: b.paymentType || 'PPD',
     ffrReference: b.ffrReference || '',
     handlingInformation: b.handlingInformation || '',
-    osiGhaText: b.osiGhaText || 'GHA: ',
+    osiGhaText: b.osiGhaText || '',
+    selectedGhaId: b.selectedGhaId || '',
     ffrRemarks: b.ffrRemarks || '',
     bookingStatus: b.bookingStatus || 'NN',
     isFlown: b.isFlown || false,
@@ -588,6 +667,7 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
       ffrReference: form.ffrReference,
       handlingInformation: form.handlingInformation,
       osiGhaText: form.osiGhaText,
+      selectedGhaId: form.selectedGhaId,
       ffrRemarks: form.ffrRemarks,
       bookingStatus: form.bookingStatus,
       isFlown: form.isFlown,
@@ -1371,7 +1451,30 @@ export default function BookingForm({ onSuccess, editingBooking = null }) {
             </div>
             <div className="form-group">
               <label className="form-label">OSI / GHA</label>
-              <textarea className="form-textarea" value={form.osiGhaText} onChange={set('osiGhaText')} rows={2} />
+              <GhaSearchSelect
+                ghas={ghaProfiles || []}
+                value={form.selectedGhaId}
+                onChange={(ghaId) => {
+                  const gha = (ghaProfiles || []).find(g => g.id === ghaId);
+                  if (!gha) { setForm(f => ({ ...f, selectedGhaId: '', osiGhaText: '' })); return; }
+                  const text = [
+                    gha.name,
+                    gha.shortName ? `(${gha.shortName})` : '',
+                    gha.location  ? `— ${gha.location}`  : '',
+                    gha.phone     ? `| Tel: ${gha.phone}` : '',
+                    gha.sitaNumber ? `| SITA: ${gha.sitaNumber}` : '',
+                  ].filter(Boolean).join(' ');
+                  setForm(f => ({ ...f, selectedGhaId: ghaId, osiGhaText: text }));
+                }}
+              />
+              <textarea
+                className="form-textarea"
+                value={form.osiGhaText}
+                onChange={set('osiGhaText')}
+                rows={2}
+                placeholder="GHA details or special instructions…"
+                style={{ marginTop: 'var(--space-2)' }}
+              />
             </div>
             <div className="form-group">
               <label className="form-label">FFR Remarks</label>

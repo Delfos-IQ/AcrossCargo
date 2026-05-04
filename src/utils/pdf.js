@@ -158,6 +158,45 @@ export const generateBookingConfirmationPdf = (booking, flightSchedules = [], ia
     { label: 'Payment Type', value: booking.paymentType },
   ]);
 
+  // OSI / GHA — highlighted block
+  if (booking.osiGhaText?.trim()) {
+    checkPage();
+    pdoc.setFontSize(10);
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setFillColor(243, 244, 246);
+    pdoc.rect(LEFT, y - 4, RIGHT - LEFT, 6, 'F');
+    pdoc.text('OSI / GHA', LEFT + 2, y);
+    y += lineGap;
+
+    const osiLines = pdoc.splitTextToSize(booking.osiGhaText.trim(), RIGHT - LEFT - 6);
+    const blockH = osiLines.length * lineGap + 4;
+    // Yellow highlight background
+    pdoc.setFillColor(255, 249, 196);
+    pdoc.rect(LEFT, y - 4, RIGHT - LEFT, blockH, 'F');
+    // Bold underlined text
+    pdoc.setFontSize(9.5);
+    pdoc.setFont('helvetica', 'bold');
+    pdoc.setTextColor(17, 24, 39);
+    osiLines.forEach((line, i) => {
+      pdoc.text(line, LEFT + 3, y + i * lineGap);
+      // Manual underline
+      const tw = pdoc.getTextWidth(line);
+      pdoc.setDrawColor(17, 24, 39);
+      pdoc.setLineWidth(0.3);
+      pdoc.line(LEFT + 3, y + i * lineGap + 0.8, LEFT + 3 + tw, y + i * lineGap + 0.8);
+    });
+    pdoc.setTextColor(17, 24, 39);
+    pdoc.setFont('helvetica', 'normal');
+    y += blockH + sectionGap / 2;
+  }
+
+  // Handling information
+  if (booking.handlingInformation?.trim()) {
+    drawSection('Handling Information', [
+      { label: 'Instructions', value: booking.handlingInformation },
+    ]);
+  }
+
   // Other charges table
   if (booking.otherCharges?.length) {
     checkPage();
